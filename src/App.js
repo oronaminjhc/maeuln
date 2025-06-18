@@ -917,18 +917,21 @@ export default function App() {
     const [likedNews, setLikedNews] = useState([]);
 
     const buanNews = [
-        { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
-        { title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n 여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
-        { title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
+        { id: 'news-1', date: '2025-06-25', title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
+        { id: 'news-2', date: '2025-06-18', title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n📖여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
+        { id: 'news-3', date: '2025-06-19', title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n  6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
     ];
 
    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 const userRef = doc(db, "users", user.uid);
-                onSnapshot(userRef, (userSnap) => {
-                     setCurrentUser({ uid: user.uid, ...user, ...(userSnap.exists() ? userSnap.data() : {}) });
+                const unsubUser = onSnapshot(userRef, (userSnap) => {
+                     const userData = userSnap.exists() ? userSnap.data() : {};
+                     setCurrentUser({ uid: user.uid, ...user, ...userData });
+                     setLikedNews(userData.likedNews || []);
                 });
+                return () => unsubUser();
             } else {
                 setCurrentUser(null);
             }
@@ -960,7 +963,7 @@ export default function App() {
         }));
         
         if (currentUser.following && currentUser.following.length > 0) {
-            const followingIds = currentUser.following;
+            const followingIds = currentUser.following.slice(0, 10); // Firestore 'in' query limit
             const qFollowingPosts = query(collection(db, "posts"), where('authorId', 'in', followingIds), orderBy("createdAt", "desc"), limit(30));
             unsubscribes.push(onSnapshot(qFollowingPosts, (snapshot) => {
                 setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -983,6 +986,36 @@ export default function App() {
 
         return () => unsubscribes.forEach(unsub => unsub());
     }, [currentUser]); 
+
+    const handleLikeNews = async (newsItem) => {
+        if (!currentUser) return;
+        
+        const userRef = doc(db, 'users', currentUser.uid);
+        const eventsRef = collection(db, 'users', currentUser.uid, 'events');
+        const isLiked = likedNews.includes(newsItem.id);
+
+        try {
+            if (isLiked) {
+                await updateDoc(userRef, { likedNews: arrayRemove(newsItem.id) });
+                const q = query(eventsRef, where("newsId", "==", newsItem.id));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach(async (doc) => {
+                    await deleteDoc(doc.ref);
+                });
+            } else {
+                await updateDoc(userRef, { likedNews: arrayUnion(newsItem.id) });
+                await addDoc(eventsRef, {
+                    title: newsItem.title,
+                    date: newsItem.date,
+                    createdAt: Timestamp.now(),
+                    type: 'news',
+                    newsId: newsItem.id
+                });
+            }
+        } catch (error) {
+            console.error("Error liking news:", error);
+        }
+    };
 
     const setCurrentPage = (pageName, param = null) => {
         setPage(pageName); setPageParam(param);
@@ -1026,8 +1059,8 @@ export default function App() {
 
     const renderPage = () => {
         switch (page) {
-            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
-            case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
+            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
+            case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
             case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser} pageParam={pageParam} />;
             case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
@@ -1037,7 +1070,7 @@ export default function App() {
             case 'notifications': return <NotificationsPage />;
             case 'chatList': return <ChatListPage chats={chats} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'chatPage': return <ChatPage pageParam={pageParam} currentUser={currentUser} />;
-            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
+            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
         }
     };
 
