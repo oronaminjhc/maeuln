@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
@@ -40,8 +40,6 @@ const Logo = ({ size = 28 }) => {
 };
 
 // --- Firebase 설정 ---
-// 중요: 이 부분은 실제 Firebase 프로젝트의 설정 값으로 채워야 합니다.
-// Firebase 콘솔에서 값을 복사하여 붙여넣으세요.
 const firebaseConfig = {
     apiKey: "AIzaSyAd7ns6wCL72P7X5_qZxX23sBxdkMhWAeg",
     authDomain: "maeulbung.firebaseapp.com",
@@ -92,8 +90,6 @@ const Modal = ({ isOpen, onClose, children }) => {
     );
 };
 
-// --- 앱 컴포넌트들 ---
-
 // 로딩 스피너
 const LoadingSpinner = () => (
     <div className="flex justify-center items-center h-full pt-20">
@@ -138,7 +134,6 @@ const AuthPage = () => {
             }
         } catch (err) {
             console.error("Auth Error:", err);
-            // Firebase 오류 코드에 따른 사용자 친화적 메시지 처리
             switch (err.code) {
                 case 'auth/operation-not-allowed':
                     setError("Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화해주세요.");
@@ -805,9 +800,9 @@ const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
 // 하단 네비게이션
 const BottomNav = ({ currentPage, setCurrentPage }) => {
     const navItems = [
-        { id: 'home', icon: 'Home', label: '홈' }, { id: 'board', icon: 'LayoutGrid', label: '게시판' },
-        { id: 'news', icon: 'Newspaper', label: '소식' }, { id: 'clubs', icon: 'Users', label: '클럽' },
-        { id: 'benefits', icon: 'TicketPercent', label: '혜택' },
+        { id: 'home', icon: Home, label: '홈' }, { id: 'board', icon: LayoutGrid, label: '게시판' },
+        { id: 'news', icon: Newspaper, label: '소식' }, { id: 'clubs', icon: Users, label: '클럽' },
+        { id: 'benefits', icon: TicketPercent, label: '혜택' },
     ];
     const handleNavClick = (id) => {
         if (['clubs', 'benefits'].includes(id)) { alert('서비스 준비중입니다.'); }
@@ -819,9 +814,10 @@ const BottomNav = ({ currentPage, setCurrentPage }) => {
                 <div className="flex justify-around items-center">
                     {navItems.map(item => {
                         const isActive = currentPage === item.id;
+                        const IconComponent = item.icon;
                         return (
                             <a href="#" key={item.id} onClick={(e) => { e.preventDefault(); handleNavClick(item.id); }} className="text-center p-2 rounded-lg w-1/5">
-                                <Icon name={item.icon} className={`w-6 h-6 mx-auto ${isActive ? 'text-[#00462A]' : 'text-gray-500'}`} />
+                                <IconComponent className={`w-6 h-6 mx-auto ${isActive ? 'text-[#00462A]' : 'text-gray-500'}`} />
                                 <span className={`text-xs font-medium ${isActive ? 'text-[#00462A] font-bold' : 'text-gray-500'}`}>{item.label}</span>
                             </a>
                         );
@@ -850,7 +846,7 @@ const SearchPage = ({ posts, setCurrentPage }) => {
             <div className="relative mb-4">
                 <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="검색어를 입력하세요..."
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
-                <Icon name="Search" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             </div>
             <div className="space-y-3">
                 {searchTerm && filteredPosts.length === 0 && ( <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p> )}
