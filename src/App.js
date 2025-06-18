@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
@@ -22,9 +22,11 @@ import {
     arrayUnion,
     arrayRemove,
     Timestamp,
-    where
+    where,
+    orderBy,
+    limit
 } from 'firebase/firestore';
-import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit } from 'lucide-react';
+import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare } from 'lucide-react';
 
 // --- 로고 컴포넌트 ---
 const Logo = ({ size = 28 }) => {
@@ -50,13 +52,10 @@ const firebaseConfig = {
     measurementId: "G-WNRFBZX0HE"
 };
 
-
-// --- Firebase 초기화 ---
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- 공용 스타일 객체 ---
 const categoryStyles = {
     '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
     '맛집': { text: 'text-green-600', bg: 'bg-green-100', bgStrong: 'bg-green-500' },
@@ -67,37 +66,28 @@ const categoryStyles = {
 };
 const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
 
-
-// --- 모달 컴포넌트 ---
 const Modal = ({ isOpen, onClose, children }) => {
     if (!isOpen) return null;
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
                     <div className="w-6"></div>
                     <h3 className="text-lg font-bold text-center"> </h3>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-                        <X size={24} />
-                    </button>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
                 </div>
-                <div className="p-6">
-                    {children}
-                </div>
+                <div className="p-6">{children}</div>
             </div>
         </div>
     );
 };
 
-// 로딩 스피너
 const LoadingSpinner = () => (
     <div className="flex justify-center items-center h-full pt-20">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#00462A]"></div>
     </div>
 );
 
-// 로그인 & 회원가입 페이지
 const AuthPage = () => {
     const [isLoginMode, setIsLoginMode] = useState(true);
     const [email, setEmail] = useState('');
@@ -110,48 +100,28 @@ const AuthPage = () => {
         e.preventDefault();
         setLoading(true);
         setError('');
-
         try {
             if (isLoginMode) {
                 await signInWithEmailAndPassword(auth, email, password);
             } else {
-                if (nickname.length < 2) {
-                    throw new Error('닉네임은 2자 이상 입력해주세요.');
-                }
+                if (nickname.length < 2) throw new Error('닉네임은 2자 이상 입력해주세요.');
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-
                 await updateProfile(user, { displayName: nickname });
-
                 const userRef = doc(db, "users", user.uid);
                 await setDoc(userRef, {
-                    displayName: nickname,
-                    email: user.email,
-                    createdAt: Timestamp.now(),
-                    followers: [],
-                    following: []
+                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: []
                 });
             }
         } catch (err) {
             console.error("Auth Error:", err);
             switch (err.code) {
-                case 'auth/operation-not-allowed':
-                    setError("Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화해주세요.");
-                    break;
-                case 'auth/email-already-in-use':
-                    setError('이미 사용 중인 이메일입니다.');
-                    break;
-                case 'auth/invalid-credential':
-                case 'auth/wrong-password':
-                case 'auth/user-not-found':
-                    setError('이메일 또는 비밀번호가 잘못되었습니다.');
-                    break;
+                case 'auth/operation-not-allowed': setError("Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화해주세요."); break;
+                case 'auth/email-already-in-use': setError('이미 사용 중인 이메일입니다.'); break;
+                case 'auth/invalid-credential': case 'auth/wrong-password': case 'auth/user-not-found': setError('이메일 또는 비밀번호가 잘못되었습니다.'); break;
                 default:
-                    if (err.message === '닉네임은 2자 이상 입력해주세요.') {
-                        setError(err.message);
-                    } else {
-                        setError('오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-                    }
+                    if (err.message === '닉네임은 2자 이상 입력해주세요.') setError(err.message);
+                    else setError('오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
                     break;
             }
         } finally {
@@ -164,60 +134,22 @@ const AuthPage = () => {
             <div className="text-center mb-8 flex flex-col items-center">
                 <Logo size={80} />
                 <h1 className="text-3xl font-bold text-gray-800 mt-4">마을엔 부안</h1>
-                <p className="text-gray-600 mt-2 text-center">
-                    지금 우리 마을에서 무슨 일이?<br/>
-                    '마을엔'에서 확인하세요!
-                </p>
+                <p className="text-gray-600 mt-2 text-center">지금 우리 마을에서 무슨 일이?<br/>'마을엔'에서 확인하세요!</p>
             </div>
             <div className="w-full max-w-xs">
                 <form onSubmit={handleAuthAction} className="space-y-4">
-                    {!isLoginMode && (
-                        <input
-                            type="text"
-                            value={nickname}
-                            onChange={(e) => setNickname(e.target.value)}
-                            placeholder="닉네임 (2자 이상)"
-                            required
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                        />
-                    )}
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="이메일 주소"
-                        required
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                    />
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="비밀번호"
-                        required
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                    />
+                    {!isLoginMode && (<input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="닉네임 (2자 이상)" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]" />)}
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일 주소" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
                     {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400"
-                    >
-                        {loading ? '처리 중...' : (isLoginMode ? '로그인' : '회원가입')}
-                    </button>
+                    <button type="submit" disabled={loading} className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400">{loading ? '처리 중...' : (isLoginMode ? '로그인' : '회원가입')}</button>
                 </form>
-                <button
-                    onClick={() => setIsLoginMode(!isLoginMode)}
-                    className="w-full mt-4 text-sm text-gray-600 hover:text-[#00462A]"
-                >
-                    {isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
-                </button>
+                <button onClick={() => setIsLoginMode(!isLoginMode)} className="w-full mt-4 text-sm text-gray-600 hover:text-[#00462A]">{isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}</button>
             </div>
         </div>
     );
 };
 
-// 달력 컴포넌트
 const Calendar = ({events = {}, onDateClick = () => {}}) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
@@ -226,9 +158,7 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
     const firstDayOfMonth = new Date(year, month, 1).getDay();
     const lastDateOfMonth = new Date(year, month + 1, 0).getDate();
     const dates = [];
-    for (let i = 0; i < firstDayOfMonth; i++) {
-        dates.push(<div key={`empty-${i}`} className="p-2"></div>);
-    }
+    for (let i = 0; i < firstDayOfMonth; i++) dates.push(<div key={`empty-${i}`} className="p-2"></div>);
     for (let i = 1; i <= lastDateOfMonth; i++) {
         const d = new Date(year, month, i);
         const isToday = d.toDateString() === new Date().toDateString();
@@ -236,9 +166,7 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
         const hasEvent = events[dateString] && events[dateString].length > 0;
         dates.push(
             <div key={i} className="relative py-1 text-center text-sm cursor-pointer" onClick={() => onDateClick(dateString)}>
-                <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>
-                    {i}
-                </span>
+                <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>{i}</span>
                 {hasEvent && <div className={`absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500`}></div>}
             </div>
         );
@@ -252,18 +180,12 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
                 <h3 className="text-md font-bold">{`${year}년 ${month + 1}월`}</h3>
                 <button onClick={nextMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronRight size={20} /></button>
             </div>
-            <div className="grid grid-cols-7 text-center text-sm">
-                {daysOfWeek.map((day, i) => (
-                    <div key={day} className={`font-bold mb-2 ${i === 0 ? 'text-red-500' : ''} ${i === 6 ? 'text-blue-500' : ''}`}>{day}</div>
-                ))}
-                {dates}
-            </div>
+            <div className="grid grid-cols-7 text-center text-sm">{daysOfWeek.map((day, i) => (<div key={day} className={`font-bold mb-2 ${i === 0 ? 'text-red-500' : ''} ${i === 6 ? 'text-blue-500' : ''}`}>{day}</div>))}{dates}</div>
         </div>
     );
 };
         
-// 홈 페이지
-const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents }) => {
+const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, followingPosts }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -273,40 +195,30 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents }) 
     
     const handleApplySubmit = async (applicationData) => {
         try {
-            await addDoc(collection(db, "applications"), {
-                ...applicationData,
-                eventName: selectedNews.title,
-                userId: currentUser.uid,
-                submittedAt: Timestamp.now(),
-            });
-            alert('신청이 완료되었습니다.');
-            setApplyModalOpen(false);
-        } catch (error) {
-            console.error("Error submitting application: ", error);
-            alert('신청 중 오류가 발생했습니다.');
-        }
+            await addDoc(collection(db, "applications"), { ...applicationData, eventName: selectedNews.title, userId: currentUser.uid, submittedAt: Timestamp.now() });
+            alert('신청이 완료되었습니다.'); setApplyModalOpen(false);
+        } catch (error) { console.error("Error submitting application: ", error); alert('신청 중 오류가 발생했습니다.'); }
+    };
+
+    const timeSince = (date) => {
+        if (!date) return ''; const seconds = Math.floor((new Date() - date.toDate()) / 1000);
+        if (seconds < 60) return `방금 전`; const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}분 전`; const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}시간 전`; const days = Math.floor(hours / 24);
+        return `${days}일 전`;
     };
 
     return (
         <div className="p-4 space-y-8">
-             <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
-                {selectedNews && ( <div> <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2> <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p> </div> )}
-            </Modal>
-            <Modal isOpen={applyModalOpen} onClose={() => setApplyModalOpen(false)}>
-                {selectedNews && <ApplyForm news={selectedNews} onSubmit={handleApplySubmit} />}
-            </Modal>
+             <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>{selectedNews && ( <div> <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2> <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p> </div> )}</Modal>
+            <Modal isOpen={applyModalOpen} onClose={() => setApplyModalOpen(false)}>{selectedNews && <ApplyForm news={selectedNews} onSubmit={handleApplySubmit} />}</Modal>
             <section>
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">지금 부안에서는</h2>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
-                </div>
+                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 부안에서는</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
                 <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {buanNews.map((news, index) => (
                         <div key={index} className="flex-shrink-0 w-4/5 md:w-3/5 rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col">
-                            <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" />
-                            <div className="p-3 bg-white flex-grow">
-                                <h3 className="font-bold truncate">{news.title}</h3>
-                            </div>
+                            <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}} />
+                            <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
                             <div className="grid grid-cols-2 gap-px bg-gray-200">
                                 <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
                                 <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
@@ -316,35 +228,29 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents }) 
                 </div>
             </section>
             <section>
-                <div className="flex justify-between items-center mb-3">
-                     <h2 className="text-lg font-bold">부안 달력</h2>
-                     <a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a>
-                </div>
+                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">부안 달력</h2><a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a></div>
                 <Calendar events={userEvents} />
             </section>
             <section>
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">지금 인기있는 글</h2>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
-                </div>
+                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 인기있는 글</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
                 <div className="space-y-3">
-                    {popularPosts.length > 0 ? (
-                         popularPosts.map(post => {
-                            const style = getCategoryStyle(post.category);
-                            return (
-                                <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
-                                    <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
-                                    <p className="truncate flex-1">{post.title}</p>
-                                    <div className="flex items-center text-xs text-gray-400 gap-2">
-                                        <Heart size={14} className="text-red-400"/>
-                                        <span>{post.likes?.length || 0}</span>
-                                    </div>
-                                </div>
-                            );
-                         })
-                    ) : (
-                        <p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>
-                    )}
+                    {popularPosts.length > 0 ? (popularPosts.map(post => { const style = getCategoryStyle(post.category);
+                        return (<div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><p className="truncate flex-1">{post.title}</p><div className="flex items-center text-xs text-gray-400 gap-2"><Heart size={14} className="text-red-400"/><span>{post.likes?.length || 0}</span></div></div>);
+                    })) : (<p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>)}
+                </div>
+            </section>
+            <section>
+                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">팔로잉</h2></div>
+                <div className="space-y-3">
+                    {followingPosts.length > 0 ? (followingPosts.map(post => { const style = getCategoryStyle(post.category);
+                        return (
+                        <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                            <div className="flex items-center gap-2 mb-2"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><h3 className="font-bold text-md truncate flex-1">{post.title}</h3></div>
+                            <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
+                            <div className="flex justify-between items-center text-xs text-gray-500"><div><span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span><span className="mx-1">·</span><span>{timeSince(post.createdAt)}</span></div><div className="flex items-center gap-3"><div className="flex items-center gap-1"><Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} /><span>{post.likes?.length || 0}</span></div><div className="flex items-center gap-1"><MessageCircle size={14} className="text-gray-400"/><span>{post.commentCount || 0}</span></div></div></div>
+                        </div>
+                        );
+                    })) : (<p className="text-center text-gray-500 py-4">팔로우하는 사용자의 글이 없습니다.</p>)}
                 </div>
             </section>
         </div>
@@ -862,14 +768,16 @@ const SearchPage = ({ posts, setCurrentPage }) => {
 }
 
 // 메인 앱
-function App() {
+export default function App() {
     const [page, setPage] = useState('home');
     const [pageHistory, setPageHistory] = useState(['home']);
     const [pageParam, setPageParam] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [posts, setPosts] = useState([]);
+    const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
+    const [chats, setChats] = useState([]);
 
     const buanNews = [
         { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
@@ -892,15 +800,25 @@ function App() {
     }, []);
 
     useEffect(() => {
-        if (!currentUser?.uid) { setPosts([]); setUserEvents({}); return; }
+        if (!currentUser?.uid) {
+            setPosts([]);
+            setFollowingPosts([]);
+            setUserEvents({});
+            setChats([]);
+            return;
+        }
+
+        const unsubscribes = [];
+
         const qPosts = query(collection(db, "posts"));
-        const unsubscribePosts = onSnapshot(qPosts, (snapshot) => {
+        unsubscribes.push(onSnapshot(qPosts, (snapshot) => {
             const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             postsData.sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis());
             setPosts(postsData);
-        }, error => console.error("Error fetching posts:", error));
+        }, error => console.error("Error fetching posts:", error)));
+
         const qEvents = query(collection(db, `users/${currentUser.uid}/events`));
-        const unsubscribeEvents = onSnapshot(qEvents, (snapshot) => {
+        unsubscribes.push(onSnapshot(qEvents, (snapshot) => {
             const eventsData = {};
             snapshot.docs.forEach(doc => {
                 const event = { id: doc.id, ...doc.data() };
@@ -908,42 +826,75 @@ function App() {
                 eventsData[event.date].push(event);
             });
             setUserEvents(eventsData);
-        }, error => console.error("Error fetching events:", error));
-        return () => { unsubscribePosts(); unsubscribeEvents(); };
-    }, [currentUser?.uid]); 
+        }, error => console.error("Error fetching events:", error)));
+        
+        if (currentUser.following && currentUser.following.length > 0) {
+            const followingIds = currentUser.following.slice(0, 30);
+            const qFollowingPosts = query(collection(db, "posts"), where('authorId', 'in', followingIds));
+            unsubscribes.push(onSnapshot(qFollowingPosts, (snapshot) => {
+                const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                postsData.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+                setFollowingPosts(postsData);
+            }, error => console.error("Error fetching following posts:", error)));
+        } else {
+            setFollowingPosts([]);
+        }
+
+        const qChats = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
+        unsubscribes.push(onSnapshot(qChats, async (snapshot) => {
+            const chatsData = await Promise.all(snapshot.docs.map(async (doc) => {
+                const chatData = doc.data();
+                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
+                if (!otherMemberId) return null;
+                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
+                return {
+                    id: doc.id,
+                    ...chatData,
+                    otherUser: userDoc.exists() ? userDoc.data() : { displayName: '알 수 없음' },
+                };
+            }));
+            setChats(chatsData.filter(Boolean));
+        }, error => console.error("Error fetching chats:", error)));
+
+        return () => unsubscribes.forEach(unsub => unsub());
+    }, [currentUser?.uid, currentUser?.following]); 
 
     const setCurrentPage = (pageName, param = null) => {
         setPage(pageName); setPageParam(param);
-        if (pageName !== page) {
-            setPageHistory(prev => [...prev, pageName]);
+        if (pageName !== page || JSON.stringify(param) !== JSON.stringify(pageParam)) {
+            setPageHistory(prev => [...prev, {page: pageName, param: param}]);
         }
     };
     
     const goBack = useCallback(() => {
-        const newHistory = [...pageHistory]; newHistory.pop();
-        const prevPage = newHistory[newHistory.length - 1] || 'home';
-        setPage(prevPage); setPageHistory(newHistory);
-    }, [pageHistory]);
+        setPageHistory(prevHistory => {
+            if (prevHistory.length <= 1) return prevHistory;
+            const newHistory = [...prevHistory];
+            newHistory.pop();
+            const lastPage = newHistory[newHistory.length - 1];
+            setPage(lastPage.page || 'home');
+            setPageParam(lastPage.param || null);
+            return newHistory;
+        });
+    }, []);
 
-    if (loading) { return ( <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen"> <LoadingSpinner /> </div> ); }
-    if (!currentUser) { return <AuthPage />; }
+    if (loading) return <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen"><LoadingSpinner /></div>;
+    if (!currentUser) return <AuthPage />;
     
     const renderHeader = () => {
-        const mainPages = ['home', 'board', 'news', 'clubs', 'benefits', 'calendar'];
-        const isSubPage = !mainPages.includes(page) || pageHistory.length > 1;
-        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'calendar': '달력', 'search': '검색', 'notifications': '알림' };
+        const mainPages = ['home'];
+        const isSubPage = !mainPages.includes(page) && pageHistory.length > 1;
+        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'calendar': '달력', 'search': '검색', 'notifications': '알림', 'chatList': '채팅', 'chatPage': pageParam?.recipientName || '채팅' };
         const title = titleMap[page] || "마을엔 부안";
         
         return (
              <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200">
-                {isSubPage ? ( <button onClick={goBack} className="p-1"><ArrowLeft size={24} /></button> ) :
-                    ( <div className="flex items-center gap-2"> <Logo size={28} /> <h1 className="text-xl font-bold text-gray-800">{title}</h1> </div> )}
+                {isSubPage ? ( <button onClick={goBack} className="p-1"><ArrowLeft size={24} /></button> ) : ( <div className="flex items-center gap-2"> <Logo size={28} /> <h1 className="text-xl font-bold text-gray-800">{title}</h1> </div> )}
                 <div className="flex items-center gap-3">
                      <button onClick={() => setCurrentPage('search')} className="p-1"><Search size={24} className="text-gray-600" /></button>
+                     <button onClick={() => setCurrentPage('chatList')} className="p-1"><MessageSquare size={24} className="text-gray-600" /></button>
                      <button onClick={() => setCurrentPage('notifications')} className="p-1"><Bell size={24} className="text-gray-600" /></button>
-                     <button onClick={() => setCurrentPage('userProfile', currentUser.uid)} className="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">
-                        {currentUser.displayName?.charAt(0) || '?'}
-                     </button>
+                     <button onClick={() => setCurrentPage('userProfile', currentUser.uid)} className="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">{currentUser.displayName?.charAt(0) || '?'}</button>
                 </div>
             </header>
         );
@@ -951,16 +902,18 @@ function App() {
 
     const renderPage = () => {
         switch (page) {
-            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} />;
+            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
             case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
             case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser}/>;
             case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'postDetail': return <PostDetailPage postId={pageParam} setCurrentPage={setCurrentPage} goBack={goBack} currentUser={currentUser} />;
-            case 'userProfile': return <UserProfilePage userId={pageParam} setCurrentPage={setCurrentPage} posts={posts} currentUser={currentUser} />;
+            case 'userProfile': return <UserProfilePage userId={pageParam} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'search': return <SearchPage posts={posts} setCurrentPage={setCurrentPage} />;
             case 'notifications': return <NotificationsPage />;
-            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} />;
+            case 'chatList': return <ChatListPage chats={chats} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'chatPage': return <ChatPage pageParam={pageParam} currentUser={currentUser} />;
+            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
         }
     };
 
@@ -968,9 +921,109 @@ function App() {
         <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
             {renderHeader()}
             <main className="pb-24 bg-white"> {renderPage()} </main>
-            {!['write', 'postDetail'].includes(page) && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
+            {!['write', 'postDetail', 'chatPage'].includes(page) && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
         </div>
     );
 }
 
-export default App;
+// ... (다른 컴포넌트들은 이전과 동일하게 유지)
+
+// 채팅방 목록 페이지
+const ChatListPage = ({ chats, setCurrentPage, currentUser }) => {
+    return (
+        <div className="p-4">
+            <h2 className="text-xl font-bold mb-4">채팅 목록</h2>
+            <div className="space-y-3">
+                {chats.length > 0 ? chats.map(chat => (
+                    <div key={chat.id} onClick={() => setCurrentPage('chatPage', { recipientId: chat.otherUser.uid, recipientName: chat.otherUser.displayName })}
+                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-gray-300 flex-shrink-0"></div>
+                        <div className="flex-1">
+                            <h3 className="font-bold">{chat.otherUser.displayName}</h3>
+                            <p className="text-sm text-gray-500 truncate">{chat.lastMessage?.text || '메시지를 보내보세요.'}</p>
+                        </div>
+                    </div>
+                )) : (
+                    <p className="text-center text-gray-500 py-10">진행중인 대화가 없습니다.</p>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// 채팅 페이지
+const ChatPage = ({ pageParam, currentUser }) => {
+    const { recipientId, recipientName } = pageParam;
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const messagesEndRef = useRef(null);
+    
+    const chatId = [currentUser.uid, recipientId].sort().join('_');
+
+    useEffect(() => {
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        const q = query(messagesRef, orderBy('createdAt', 'asc'));
+        const unsubscribe = onSnapshot(q, snapshot => {
+            setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return unsubscribe;
+    }, [chatId]);
+    
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessage.trim()) return;
+
+        const messageData = {
+            text: newMessage,
+            senderId: currentUser.uid,
+            createdAt: Timestamp.now(),
+        };
+
+        const chatRef = doc(db, 'chats', chatId);
+        const messagesRef = collection(chatRef, 'messages');
+        
+        try {
+            await addDoc(messagesRef, messageData);
+            await setDoc(chatRef, {
+                members: [currentUser.uid, recipientId],
+                lastMessage: messageData,
+            }, { merge: true });
+            setNewMessage('');
+        } catch (error) {
+            console.error("Error sending message:", error);
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-[calc(100vh-120px)]">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.senderId === currentUser.uid ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-xs p-3 rounded-lg ${msg.senderId === currentUser.uid ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
+                            <p>{msg.text}</p>
+                        </div>
+                    </div>
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+            <form onSubmit={handleSendMessage} className="p-4 bg-white border-t">
+                 <div className="relative flex items-center">
+                    <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="메시지를 입력하세요."
+                        className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                    />
+                    <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
+                        <Send size={20} />
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+};
