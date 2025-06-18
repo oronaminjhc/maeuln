@@ -161,7 +161,7 @@ const AuthPage = () => {
             <div className="text-center mb-8 flex flex-col items-center">
                 <Logo size={80} />
                 <h1 className="text-3xl font-bold text-gray-800 mt-4">마을엔 부안</h1>
-                <p className="text-gray-600 mt-2">지금 우리 동네에서 무슨 일이?,<br />'마을엔'에서 확인하세요!  <div className="w-full max-w-xs">
+                <p className="text-gray-600 mt-2">지금 우리 동네에서 무슨 일이?,<br />'마을엔'에서 확인하세요! <div className="w-full max-w-xs">
                 <form onSubmit={handleAuthAction} className="space-y-4">
                     {!isLoginMode && (
                         <input
