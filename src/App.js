@@ -229,7 +229,7 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, fo
             </section>
             <section>
                 <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">부안 달력</h2><a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a></div>
-                <Calendar events={userEvents} />
+                <Calendar events={userEvents} onDateClick={(date) => setCurrentPage('calendar', { date })}/>
             </section>
             <section>
                 <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 인기있는 글</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
@@ -297,7 +297,7 @@ const NewsPage = ({ buanNews, currentUser }) => {
                 </Modal>
                 {filteredNews.map((news, index) => (
                     <div key={index} className="w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col">
-                        <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" />
+                        <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}}/>
                         <div className="p-3 bg-white flex-grow">
                             <h3 className="font-bold truncate">{news.title}</h3>
                         </div>
@@ -312,10 +312,18 @@ const NewsPage = ({ buanNews, currentUser }) => {
     );
 };
 
-const CalendarPage = ({ userEvents, currentUser }) => {
+const CalendarPage = ({ userEvents, currentUser, pageParam }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);
     const [eventTitle, setEventTitle] = useState('');
+    
+    useEffect(() => {
+        if(pageParam?.date) {
+            setSelectedDate(pageParam.date);
+            setIsModalOpen(true);
+        }
+    }, [pageParam]);
+
     const handleDateClick = (date) => { setSelectedDate(date); setIsModalOpen(true); };
     const handleAddEvent = async () => {
         if (!eventTitle.trim()) { alert("일정 제목을 입력해주세요."); return; }
@@ -529,13 +537,14 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
         try { await updateDoc(doc(db, 'posts', postId), { bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
         catch(e) { console.error("Error updating bookmark:", e); }
     };
-    const handleCommentSubmit = async () => {
+    const handleCommentSubmit = async (e) => {
+        if (e) e.preventDefault();
         if (!newComment.trim() || !currentUser) return;
         try {
             await addDoc(collection(db, `posts/${postId}/comments`), { text: newComment.trim(), authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(), likes: [] });
             await updateDoc(doc(db, 'posts', postId), { commentCount: increment(1) });
             setNewComment('');
-        } catch (e) { console.error("Error adding comment: ", e); }
+        } catch (error) { console.error("Error adding comment: ", error); }
     };
     const handleCommentLike = async (commentId, currentLikes = []) => {
         if (!currentUser) return; const commentRef = doc(db, `posts/${postId}/comments`, commentId); const liked = currentLikes.includes(currentUser.uid);
@@ -604,14 +613,18 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
                 </div>
             </div>
             <div className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto bg-white border-t p-3">
-                <div className="relative flex items-center">
-                    <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="댓글을 입력하세요."
+                <form onSubmit={handleCommentSubmit} className="relative flex items-center">
+                    <input
+                        type="text"
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="댓글을 입력하세요."
                         className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(e)} />
-                    <button onClick={handleCommentSubmit} className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
+                    />
+                    <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
                         <Send size={20} />
                     </button>
-                </div>
+                </form>
             </div>
         </div>
     );
@@ -875,7 +888,7 @@ const ChatPage = ({ pageParam, currentUser }) => {
     );
 };
 
-function App() {
+export default function App() {
     const [page, setPage] = useState('home');
     const [pageHistory, setPageHistory] = useState([{page: 'home', param: null}]);
     const [pageParam, setPageParam] = useState(null);
@@ -888,7 +901,7 @@ function App() {
 
     const buanNews = [
         { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
-        { title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n📖여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
+        { title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n 여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
         { title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
     ];
 
@@ -998,7 +1011,7 @@ function App() {
         switch (page) {
             case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
             case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
-            case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser}/>;
+            case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser} pageParam={pageParam} />;
             case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'postDetail': return <PostDetailPage postId={pageParam} setCurrentPage={setCurrentPage} goBack={goBack} currentUser={currentUser} />;
@@ -1019,4 +1032,3 @@ function App() {
         </div>
     );
 }
-
