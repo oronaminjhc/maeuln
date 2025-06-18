@@ -1,3 +1,24 @@
+@ -1,25 +1,1286 @@
+import logo from './logo.svg';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <img src={logo} className="App-logo" alt="logo" />
+        <p>
+          Edit <code>src/App.js</code> and save to reload.
+        </p>
+        <a
+          className="App-link"
+          href="https://reactjs.org"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Learn React
+        </a>
+      </header>
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
@@ -39,9 +60,9 @@ const Logo = ({ size = 28 }) => {
     );
 };
 
-// --- Firebase 설정 ---
+// --- Firebase 설정 (환경 변수 사용을 권장합니다) ---
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY", // 실제 API 키로 교체해야 합니다.
+    apiKey: "AIzaSyAd7ns6wCL72P7X5_qZxX23sBxdkMhWAeg",
     authDomain: "maeulbung.firebaseapp.com",
     projectId: "maeulbung",
     storageBucket: "maeulbung.appspot.com",
@@ -57,13 +78,14 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- 공용 스타일 객체 ---
+// [추가] Tailwind CSS 동적 클래스 문제를 해결하기 위한 스타일 맵
 const categoryStyles = {
     '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
     '맛집': { text: 'text-green-600', bg: 'bg-green-100', bgStrong: 'bg-green-500' },
     '정보': { text: 'text-orange-600', bg: 'bg-orange-100', bgStrong: 'bg-orange-500' },
     '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
     '사건사고': { text: 'text-red-600', bg: 'bg-red-100', bgStrong: 'bg-red-500' },
-    '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
+    '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' } // 기본값
 };
 const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
 
@@ -90,13 +112,14 @@ const Modal = ({ isOpen, onClose, children }) => {
     );
 };
 
-// --- 앱 컴포넌트들 ---
+// --- 앱 컴포넌트 ---
 
 // 로딩 스피너
 const LoadingSpinner = () => (
-    <div className="flex justify-center items-center h-full pt-20">
+    <div className="flex justify-center items-center h-full">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#00462A]"></div>
     </div>
+  );
 );
 
 // 로그인 & 회원가입 페이지
@@ -113,13 +136,22 @@ const AuthPage = () => {
         setLoading(true);
         setError('');
 
-        try {
-            if (isLoginMode) {
+        if (isLoginMode) {
+            // 로그인 처리
+            try {
                 await signInWithEmailAndPassword(auth, email, password);
-            } else {
-                if (nickname.length < 2) {
-                    throw new Error('닉네임은 2자 이상 입력해주세요.');
-                }
+            } catch (err) {
+                setError('이메일 또는 비밀번호가 잘못되었습니다.');
+                console.error("Login error:", err);
+            }
+        } else {
+            // 회원가입 처리
+            if (nickname.length < 2) {
+                setError('닉네임은 2자 이상 입력해주세요.');
+                setLoading(false);
+                return;
+            }
+            try {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
 
@@ -133,33 +165,17 @@ const AuthPage = () => {
                     followers: [],
                     following: []
                 });
-            }
-        } catch (err) {
-            console.error("Auth Error:", err);
-            // Firebase 오류 코드에 따른 사용자 친화적 메시지 처리
-            switch (err.code) {
-                case 'auth/operation-not-allowed':
-                    setError("Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화해주세요.");
-                    break;
-                case 'auth/email-already-in-use':
+
+            } catch (err) {
+                if (err.code === 'auth/email-already-in-use') {
                     setError('이미 사용 중인 이메일입니다.');
-                    break;
-                case 'auth/invalid-credential':
-                case 'auth/wrong-password':
-                case 'auth/user-not-found':
-                    setError('이메일 또는 비밀번호가 잘못되었습니다.');
-                    break;
-                default:
-                    if (err.message === '닉네임은 2자 이상 입력해주세요.') {
-                        setError(err.message);
-                    } else {
-                        setError('오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-                    }
-                    break;
+                } else {
+                    setError('회원가입 중 오류가 발생했습니다.');
+                }
+                console.error("Signup error:", err);
             }
-        } finally {
-            setLoading(false);
         }
+        setLoading(false);
     };
 
     return (
