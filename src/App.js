@@ -24,7 +24,9 @@ import {
     Timestamp,
     where,
     orderBy,
-    limit
+    limit,
+    deleteDoc,
+    getDocs
 } from 'firebase/firestore';
 import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare } from 'lucide-react';
 
@@ -56,12 +58,15 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// --- 새로운 카테고리 스타일 ---
 const categoryStyles = {
     '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
-    '맛집': { text: 'text-green-600', bg: 'bg-green-100', bgStrong: 'bg-green-500' },
-    '정보': { text: 'text-orange-600', bg: 'bg-orange-100', bgStrong: 'bg-orange-500' },
+    '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' },
+    '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' },
+    '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' },
+    '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' },
+    '부안맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
     '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
-    '사건사고': { text: 'text-red-600', bg: 'bg-red-100', bgStrong: 'bg-red-500' },
     '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
 };
 const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
@@ -110,7 +115,7 @@ const AuthPage = () => {
                 await updateProfile(user, { displayName: nickname });
                 const userRef = doc(db, "users", user.uid);
                 await setDoc(userRef, {
-                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: []
+                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: [], likedNews: []
                 });
             }
         } catch (err) {
@@ -185,7 +190,7 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
     );
 };
         
-const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, followingPosts }) => {
+const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, followingPosts, handleLikeNews, likedNews }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -215,16 +220,22 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, fo
             <section>
                 <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 부안에서는</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
                 <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    {buanNews.map((news, index) => (
-                        <div key={index} className="flex-shrink-0 w-4/5 md:w-3/5 rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col">
-                            <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}} />
-                            <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
-                            <div className="grid grid-cols-2 gap-px bg-gray-200">
-                                <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-                                <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
+                    {buanNews.map((news) => {
+                        const isLiked = likedNews.includes(news.id);
+                        return (
+                            <div key={news.id} className="flex-shrink-0 w-4/5 md:w-3/5 rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
+                                <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}} />
+                                <button onClick={() => handleLikeNews(news)} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
+                                    <Heart size={20} className={isLiked ? "text-red-500 fill-current" : "text-gray-500"} />
+                                </button>
+                                <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
+                                <div className="grid grid-cols-2 gap-px bg-gray-200">
+                                    <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
+                                    <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             </section>
             <section>
@@ -257,7 +268,7 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, fo
     );
 };
 
-const NewsPage = ({ buanNews, currentUser }) => {
+const NewsPage = ({ buanNews, currentUser, handleLikeNews, likedNews }) => {
     const [activeTag, setActiveTag] = useState('전체');
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -295,18 +306,24 @@ const NewsPage = ({ buanNews, currentUser }) => {
                 <Modal isOpen={applyModalOpen} onClose={() => setApplyModalOpen(false)}>
                     {selectedNews && <ApplyForm news={selectedNews} onSubmit={handleApplySubmit} />}
                 </Modal>
-                {filteredNews.map((news, index) => (
-                    <div key={index} className="w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col">
-                        <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}}/>
-                        <div className="p-3 bg-white flex-grow">
-                            <h3 className="font-bold truncate">{news.title}</h3>
+                {filteredNews.map((news) => {
+                    const isLiked = likedNews.includes(news.id);
+                    return (
+                        <div key={news.id} className="w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
+                            <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}} />
+                             <button onClick={() => handleLikeNews(news)} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
+                                <Heart size={20} className={isLiked ? "text-red-500 fill-current" : "text-gray-500"} />
+                            </button>
+                            <div className="p-3 bg-white flex-grow">
+                                <h3 className="font-bold truncate">{news.title}</h3>
+                            </div>
+                            <div className="grid grid-cols-2 gap-px bg-gray-200">
+                                <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
+                                <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-px bg-gray-200">
-                            <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-                            <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
-                        </div>
-                    </div>
-                ))}
+                    )
+                })}
             </div>
         </div>
     );
@@ -328,7 +345,7 @@ const CalendarPage = ({ userEvents, currentUser, pageParam }) => {
     const handleAddEvent = async () => {
         if (!eventTitle.trim()) { alert("일정 제목을 입력해주세요."); return; }
         try {
-            await addDoc(collection(db, 'users', currentUser.uid, 'events'), { title: eventTitle, date: selectedDate, createdAt: Timestamp.now() });
+            await addDoc(collection(db, 'users', currentUser.uid, 'events'), { title: eventTitle, date: selectedDate, createdAt: Timestamp.now(), type: 'user' });
             setIsModalOpen(false); setEventTitle('');
         } catch(error) { console.error("Error adding event: ", error); alert("일정 추가 중 오류가 발생했습니다."); }
     };
@@ -397,7 +414,7 @@ const ApplyForm = ({ news, onSubmit }) => {
 
 const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
     const [filter, setFilter] = useState('전체');
-    const categories = ['전체', '일상', '맛집', '정보', '질문', '사건사고'];
+    const categories = ['전체', '일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
     const filteredPosts = filter === '전체' ? posts : posts.filter(p => p.category === filter);
     const timeSince = (date) => {
         if (!date) return '';
@@ -465,7 +482,7 @@ const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
 
 const WritePage = ({ setCurrentPage, currentUser }) => {
     const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [category, setCategory] = useState('일상');
-    const categories = ['일상', '맛집', '정보', '질문', '사건사고'];
+    const categories = ['일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
     const handleSubmit = async () => {
         if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
         try {
@@ -538,7 +555,7 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
         catch(e) { console.error("Error updating bookmark:", e); }
     };
     const handleCommentSubmit = async (e) => {
-        if (e) e.preventDefault();
+        e.preventDefault();
         if (!newComment.trim() || !currentUser) return;
         try {
             await addDoc(collection(db, `posts/${postId}/comments`), { text: newComment.trim(), authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(), likes: [] });
@@ -630,7 +647,6 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
     );
 };
 
-// 사용자 프로필 페이지
 const UserProfilePage = ({ userId, setCurrentPage, currentUser }) => {
     const [profileUser, setProfileUser] = useState(null);
     const [userPosts, setUserPosts] = useState([]);
@@ -898,20 +914,24 @@ export default function App() {
     const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
     const [chats, setChats] = useState([]);
+    const [likedNews, setLikedNews] = useState([]);
 
     const buanNews = [
-        { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
-        { title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n 여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
-        { title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
+        { id: 'news-1', date: '2025-06-25', title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
+        { id: 'news-2', date: '2025-06-18', title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n📖여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
+        { id: 'news-3', date: '2025-06-19', title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n  6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
     ];
 
    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 const userRef = doc(db, "users", user.uid);
-                onSnapshot(userRef, (userSnap) => {
-                     setCurrentUser({ uid: user.uid, ...user, ...(userSnap.exists() ? userSnap.data() : {}) });
+                const unsubUser = onSnapshot(userRef, (userSnap) => {
+                     const userData = userSnap.exists() ? userSnap.data() : {};
+                     setCurrentUser({ uid: user.uid, ...user, ...userData });
+                     setLikedNews(userData.likedNews || []);
                 });
+                return () => unsubUser();
             } else {
                 setCurrentUser(null);
             }
@@ -943,7 +963,7 @@ export default function App() {
         }));
         
         if (currentUser.following && currentUser.following.length > 0) {
-            const followingIds = currentUser.following;
+            const followingIds = currentUser.following.slice(0, 10); // Firestore 'in' query limit
             const qFollowingPosts = query(collection(db, "posts"), where('authorId', 'in', followingIds), orderBy("createdAt", "desc"), limit(30));
             unsubscribes.push(onSnapshot(qFollowingPosts, (snapshot) => {
                 setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -966,6 +986,36 @@ export default function App() {
 
         return () => unsubscribes.forEach(unsub => unsub());
     }, [currentUser]); 
+
+    const handleLikeNews = async (newsItem) => {
+        if (!currentUser) return;
+        
+        const userRef = doc(db, 'users', currentUser.uid);
+        const eventsRef = collection(db, 'users', currentUser.uid, 'events');
+        const isLiked = likedNews.includes(newsItem.id);
+
+        try {
+            if (isLiked) {
+                await updateDoc(userRef, { likedNews: arrayRemove(newsItem.id) });
+                const q = query(eventsRef, where("newsId", "==", newsItem.id));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach(async (doc) => {
+                    await deleteDoc(doc.ref);
+                });
+            } else {
+                await updateDoc(userRef, { likedNews: arrayUnion(newsItem.id) });
+                await addDoc(eventsRef, {
+                    title: newsItem.title,
+                    date: newsItem.date,
+                    createdAt: Timestamp.now(),
+                    type: 'news',
+                    newsId: newsItem.id
+                });
+            }
+        } catch (error) {
+            console.error("Error liking news:", error);
+        }
+    };
 
     const setCurrentPage = (pageName, param = null) => {
         setPage(pageName); setPageParam(param);
@@ -1009,8 +1059,8 @@ export default function App() {
 
     const renderPage = () => {
         switch (page) {
-            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
-            case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
+            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
+            case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
             case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser} pageParam={pageParam} />;
             case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
@@ -1020,7 +1070,7 @@ export default function App() {
             case 'notifications': return <NotificationsPage />;
             case 'chatList': return <ChatListPage chats={chats} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'chatPage': return <ChatPage pageParam={pageParam} currentUser={currentUser} />;
-            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
+            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
         }
     };
 
