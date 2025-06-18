@@ -257,7 +257,6 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, fo
     );
 };
 
-// 소식 페이지
 const NewsPage = ({ buanNews, currentUser }) => {
     const [activeTag, setActiveTag] = useState('전체');
     const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -313,7 +312,6 @@ const NewsPage = ({ buanNews, currentUser }) => {
     );
 };
 
-// 달력 페이지
 const CalendarPage = ({ userEvents, currentUser }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);
@@ -353,7 +351,6 @@ const CalendarPage = ({ userEvents, currentUser }) => {
     );
 };
 
-// 신청하기 폼
 const ApplyForm = ({ news, onSubmit }) => {
     const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [dob, setDob] = useState(''); const [agreed, setAgreed] = useState(false);
     const handleSubmit = (e) => {
@@ -390,7 +387,6 @@ const ApplyForm = ({ news, onSubmit }) => {
     );
 };
 
-// 게시판 페이지
 const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
     const [filter, setFilter] = useState('전체');
     const categories = ['전체', '일상', '맛집', '정보', '질문', '사건사고'];
@@ -459,7 +455,6 @@ const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
     );
 };
 
-// 글쓰기 페이지
 const WritePage = ({ setCurrentPage, currentUser }) => {
     const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [category, setCategory] = useState('일상');
     const categories = ['일상', '맛집', '정보', '질문', '사건사고'];
@@ -503,12 +498,15 @@ const WritePage = ({ setCurrentPage, currentUser }) => {
     );
 };
 
-// 글 상세 페이지
 const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
     const [post, setPost] = useState(null); const [comments, setComments] = useState([]); const [newComment, setNewComment] = useState(''); const [loading, setLoading] = useState(true);
-    const postRef = doc(db, `posts`, postId);
     
     useEffect(() => {
+        if (!postId) {
+            goBack();
+            return;
+        }
+        const postRef = doc(db, `posts`, postId);
         const unsubscribePost = onSnapshot(postRef, (doc) => {
             if (doc.exists()) { setPost({ id: doc.id, ...doc.data() }); } else { alert("삭제된 게시글입니다."); goBack(); }
             setLoading(false);
@@ -523,19 +521,19 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
     
     const handleLike = async () => {
         if (!post || !currentUser) return; const liked = post.likes?.includes(currentUser.uid);
-        try { await updateDoc(postRef, { likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
+        try { await updateDoc(doc(db, 'posts', postId), { likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
         catch (e) { console.error("Error updating like: ", e); }
     };
     const handleBookmark = async () => {
         if (!post || !currentUser) return; const bookmarked = post.bookmarks?.includes(currentUser.uid);
-        try { await updateDoc(postRef, { bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
+        try { await updateDoc(doc(db, 'posts', postId), { bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
         catch(e) { console.error("Error updating bookmark:", e); }
     };
     const handleCommentSubmit = async () => {
         if (!newComment.trim() || !currentUser) return;
         try {
             await addDoc(collection(db, `posts/${postId}/comments`), { text: newComment.trim(), authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(), likes: [] });
-            await updateDoc(postRef, { commentCount: increment(1) });
+            await updateDoc(doc(db, 'posts', postId), { commentCount: increment(1) });
             setNewComment('');
         } catch (e) { console.error("Error adding comment: ", e); }
     };
@@ -609,7 +607,7 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
                 <div className="relative flex items-center">
                     <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="댓글을 입력하세요."
                         className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                        onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit()} />
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(e)} />
                     <button onClick={handleCommentSubmit} className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
                         <Send size={20} />
                     </button>
@@ -620,25 +618,29 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
 };
 
 // 사용자 프로필 페이지
-const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
+const UserProfilePage = ({ userId, setCurrentPage, currentUser }) => {
     const [profileUser, setProfileUser] = useState(null);
     const [userPosts, setUserPosts] = useState([]);
     const [isFollowing, setIsFollowing] = useState(false);
 
     useEffect(() => {
+        if (!userId) return;
+        
         const userRef = doc(db, 'users', userId);
-        const unsubscribe = onSnapshot(userRef, (doc) => {
+        const unsubscribeUser = onSnapshot(userRef, (doc) => {
             if(doc.exists()){
                 const userData = doc.data();
-                setProfileUser({...userData, id: doc.id});
+                setProfileUser({...userData, id: doc.id, uid: doc.id});
                 setIsFollowing(userData.followers?.includes(currentUser.uid) || false);
             }
         });
-        const userPostsQuery = query(collection(db, 'posts'), where("authorId", "==", userId));
+
+        const userPostsQuery = query(collection(db, 'posts'), where("authorId", "==", userId), orderBy("createdAt", "desc"));
         const unsubscribePosts = onSnapshot(userPostsQuery, (snapshot) => {
             setUserPosts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
         });
-        return () => { unsubscribe(); unsubscribePosts(); };
+        
+        return () => { unsubscribeUser(); unsubscribePosts(); };
     }, [userId, currentUser.uid]);
 
     const handleFollow = async () => {
@@ -659,13 +661,16 @@ const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
         }
     };
 
-    if(!profileUser) return <LoadingSpinner />;
+    const handleMessage = () => {
+        setCurrentPage('chatPage', { recipientId: userId, recipientName: profileUser.displayName });
+    };
 
+    if(!profileUser) return <LoadingSpinner />;
     const isMyProfile = currentUser.uid === userId;
 
     return (
         <div className="p-4">
-            <div className="flex items-start mb-4 pb-4 border-b">
+            <div className="flex items-center mb-6">
                 <div className="w-16 h-16 rounded-full bg-gray-300 mr-4 flex-shrink-0"></div>
                 <div className="flex-1">
                     <h2 className="text-xl font-bold">{profileUser.displayName}</h2>
@@ -675,21 +680,29 @@ const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
                         <span>팔로잉 {profileUser.following?.length || 0}</span>
                     </div>
                 </div>
+            </div>
+            <div className="flex gap-2 mb-6">
                 {isMyProfile ? (
-                    <div className="flex gap-2">
-                        <button onClick={() => alert('프로필 편집 기능은 준비 중입니다.')} className="p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center gap-1">
-                            <Edit size={16} />
+                    <>
+                        <button onClick={() => alert('프로필 편집 기능은 준비 중입니다.')} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
+                            <Edit size={16} /> 프로필 편집
                         </button>
-                        <button onClick={handleLogout} className="p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center gap-1">
-                            <LogOut size={16} />
+                        <button onClick={handleLogout} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
+                            <LogOut size={16} /> 로그아웃
                         </button>
-                    </div>
+                    </>
                 ) : (
-                    <button onClick={handleFollow} className={`px-4 py-1.5 text-sm font-semibold rounded-full ${isFollowing ? 'bg-gray-200 text-gray-800' : 'bg-[#00462A] text-white'}`}>
-                        {isFollowing ? '팔로잉' : '팔로우'}
-                    </button>
+                    <>
+                        <button onClick={handleFollow} className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg ${isFollowing ? 'bg-gray-200 text-gray-800' : 'bg-[#00462A] text-white'}`}>
+                            {isFollowing ? '팔로잉' : '팔로우'}
+                        </button>
+                        <button onClick={handleMessage} className="flex-1 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-500 text-white">
+                            메시지
+                        </button>
+                    </>
                 )}
             </div>
+
             <div className="space-y-3">
                 <h3 className="text-lg font-bold">작성한 글</h3>
                 {userPosts.length > 0 ? userPosts.map(post => (
@@ -703,7 +716,6 @@ const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
     );
 };
 
-// 하단 네비게이션
 const BottomNav = ({ currentPage, setCurrentPage }) => {
     const navItems = [
         { id: 'home', icon: Home, label: '홈' }, { id: 'board', icon: LayoutGrid, label: '게시판' },
@@ -734,7 +746,6 @@ const BottomNav = ({ currentPage, setCurrentPage }) => {
     );
 };
 
-// 알림 페이지
 const NotificationsPage = () => {
     const notifications = [
         { id: 1, text: '새로운 이벤트 "나의 삶, 한 권의 책"이 등록되었습니다.', time: '2시간 전' },
@@ -743,7 +754,6 @@ const NotificationsPage = () => {
     return ( <div className="p-4"> {notifications.map(notif => ( <div key={notif.id} className="p-3 border-b border-gray-200"> <p className="text-sm">{notif.text}</p> <p className="text-xs text-gray-500 mt-1">{notif.time}</p> </div> ))} </div> );
 };
 
-// 검색 페이지
 const SearchPage = ({ posts, setCurrentPage }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const filteredPosts = searchTerm ? posts.filter(post => post.title.toLowerCase().includes(searchTerm.toLowerCase()) || post.content.toLowerCase().includes(searchTerm.toLowerCase())) : [];
@@ -765,170 +775,8 @@ const SearchPage = ({ posts, setCurrentPage }) => {
             </div>
         </div>
     );
-}
+};
 
-// 메인 앱
-export default function App() {
-    const [page, setPage] = useState('home');
-    const [pageHistory, setPageHistory] = useState(['home']);
-    const [pageParam, setPageParam] = useState(null);
-    const [currentUser, setCurrentUser] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [posts, setPosts] = useState([]);
-    const [followingPosts, setFollowingPosts] = useState([]);
-    const [userEvents, setUserEvents] = useState({});
-    const [chats, setChats] = useState([]);
-
-    const buanNews = [
-        { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
-        { title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n📖여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
-        { title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
-    ];
-
-   useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                const userRef = doc(db, "users", user.uid);
-                const userSnap = await getDoc(userRef);
-                setCurrentUser({ uid: user.uid, ...user, ...(userSnap.exists() ? userSnap.data() : {}) });
-            } else {
-                setCurrentUser(null);
-            }
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    useEffect(() => {
-        if (!currentUser?.uid) {
-            setPosts([]);
-            setFollowingPosts([]);
-            setUserEvents({});
-            setChats([]);
-            return;
-        }
-
-        const unsubscribes = [];
-
-        const qPosts = query(collection(db, "posts"));
-        unsubscribes.push(onSnapshot(qPosts, (snapshot) => {
-            const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            postsData.sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-            setPosts(postsData);
-        }, error => console.error("Error fetching posts:", error)));
-
-        const qEvents = query(collection(db, `users/${currentUser.uid}/events`));
-        unsubscribes.push(onSnapshot(qEvents, (snapshot) => {
-            const eventsData = {};
-            snapshot.docs.forEach(doc => {
-                const event = { id: doc.id, ...doc.data() };
-                if (!eventsData[event.date]) eventsData[event.date] = [];
-                eventsData[event.date].push(event);
-            });
-            setUserEvents(eventsData);
-        }, error => console.error("Error fetching events:", error)));
-        
-        if (currentUser.following && currentUser.following.length > 0) {
-            const followingIds = currentUser.following.slice(0, 30);
-            const qFollowingPosts = query(collection(db, "posts"), where('authorId', 'in', followingIds));
-            unsubscribes.push(onSnapshot(qFollowingPosts, (snapshot) => {
-                const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                postsData.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-                setFollowingPosts(postsData);
-            }, error => console.error("Error fetching following posts:", error)));
-        } else {
-            setFollowingPosts([]);
-        }
-
-        const qChats = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
-        unsubscribes.push(onSnapshot(qChats, async (snapshot) => {
-            const chatsData = await Promise.all(snapshot.docs.map(async (doc) => {
-                const chatData = doc.data();
-                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
-                if (!otherMemberId) return null;
-                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
-                return {
-                    id: doc.id,
-                    ...chatData,
-                    otherUser: userDoc.exists() ? userDoc.data() : { displayName: '알 수 없음' },
-                };
-            }));
-            setChats(chatsData.filter(Boolean));
-        }, error => console.error("Error fetching chats:", error)));
-
-        return () => unsubscribes.forEach(unsub => unsub());
-    }, [currentUser?.uid, currentUser?.following]); 
-
-    const setCurrentPage = (pageName, param = null) => {
-        setPage(pageName); setPageParam(param);
-        if (pageName !== page || JSON.stringify(param) !== JSON.stringify(pageParam)) {
-            setPageHistory(prev => [...prev, {page: pageName, param: param}]);
-        }
-    };
-    
-    const goBack = useCallback(() => {
-        setPageHistory(prevHistory => {
-            if (prevHistory.length <= 1) return prevHistory;
-            const newHistory = [...prevHistory];
-            newHistory.pop();
-            const lastPage = newHistory[newHistory.length - 1];
-            setPage(lastPage.page || 'home');
-            setPageParam(lastPage.param || null);
-            return newHistory;
-        });
-    }, []);
-
-    if (loading) return <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen"><LoadingSpinner /></div>;
-    if (!currentUser) return <AuthPage />;
-    
-    const renderHeader = () => {
-        const mainPages = ['home'];
-        const isSubPage = !mainPages.includes(page) && pageHistory.length > 1;
-        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'calendar': '달력', 'search': '검색', 'notifications': '알림', 'chatList': '채팅', 'chatPage': pageParam?.recipientName || '채팅' };
-        const title = titleMap[page] || "마을엔 부안";
-        
-        return (
-             <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200">
-                {isSubPage ? ( <button onClick={goBack} className="p-1"><ArrowLeft size={24} /></button> ) : ( <div className="flex items-center gap-2"> <Logo size={28} /> <h1 className="text-xl font-bold text-gray-800">{title}</h1> </div> )}
-                <div className="flex items-center gap-3">
-                     <button onClick={() => setCurrentPage('search')} className="p-1"><Search size={24} className="text-gray-600" /></button>
-                     <button onClick={() => setCurrentPage('chatList')} className="p-1"><MessageSquare size={24} className="text-gray-600" /></button>
-                     <button onClick={() => setCurrentPage('notifications')} className="p-1"><Bell size={24} className="text-gray-600" /></button>
-                     <button onClick={() => setCurrentPage('userProfile', currentUser.uid)} className="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">{currentUser.displayName?.charAt(0) || '?'}</button>
-                </div>
-            </header>
-        );
-    };
-
-    const renderPage = () => {
-        switch (page) {
-            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
-            case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
-            case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser}/>;
-            case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
-            case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
-            case 'postDetail': return <PostDetailPage postId={pageParam} setCurrentPage={setCurrentPage} goBack={goBack} currentUser={currentUser} />;
-            case 'userProfile': return <UserProfilePage userId={pageParam} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
-            case 'search': return <SearchPage posts={posts} setCurrentPage={setCurrentPage} />;
-            case 'notifications': return <NotificationsPage />;
-            case 'chatList': return <ChatListPage chats={chats} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
-            case 'chatPage': return <ChatPage pageParam={pageParam} currentUser={currentUser} />;
-            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
-        }
-    };
-
-    return (
-        <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
-            {renderHeader()}
-            <main className="pb-24 bg-white"> {renderPage()} </main>
-            {!['write', 'postDetail', 'chatPage'].includes(page) && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
-        </div>
-    );
-}
-
-// ... (다른 컴포넌트들은 이전과 동일하게 유지)
-
-// 채팅방 목록 페이지
 const ChatListPage = ({ chats, setCurrentPage, currentUser }) => {
     return (
         <div className="p-4">
@@ -951,9 +799,8 @@ const ChatListPage = ({ chats, setCurrentPage, currentUser }) => {
     );
 };
 
-// 채팅 페이지
 const ChatPage = ({ pageParam, currentUser }) => {
-    const { recipientId, recipientName } = pageParam;
+    const { recipientId } = pageParam;
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef(null);
@@ -1027,3 +874,149 @@ const ChatPage = ({ pageParam, currentUser }) => {
         </div>
     );
 };
+
+function App() {
+    const [page, setPage] = useState('home');
+    const [pageHistory, setPageHistory] = useState([{page: 'home', param: null}]);
+    const [pageParam, setPageParam] = useState(null);
+    const [currentUser, setCurrentUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [posts, setPosts] = useState([]);
+    const [followingPosts, setFollowingPosts] = useState([]);
+    const [userEvents, setUserEvents] = useState({});
+    const [chats, setChats] = useState([]);
+
+    const buanNews = [
+        { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
+        { title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n📖여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
+        { title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
+    ];
+
+   useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const userRef = doc(db, "users", user.uid);
+                onSnapshot(userRef, (userSnap) => {
+                     setCurrentUser({ uid: user.uid, ...user, ...(userSnap.exists() ? userSnap.data() : {}) });
+                });
+            } else {
+                setCurrentUser(null);
+            }
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        if (!currentUser?.uid) {
+            setPosts([]); setFollowingPosts([]); setUserEvents({}); setChats([]); return;
+        }
+
+        const unsubscribes = [];
+        const qPosts = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
+        unsubscribes.push(onSnapshot(qPosts, (snapshot) => {
+            setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }));
+        
+        const qEvents = query(collection(db, `users/${currentUser.uid}/events`));
+        unsubscribes.push(onSnapshot(qEvents, (snapshot) => {
+            const eventsData = {};
+            snapshot.docs.forEach(doc => {
+                const event = { id: doc.id, ...doc.data() };
+                if (!eventsData[event.date]) eventsData[event.date] = [];
+                eventsData[event.date].push(event);
+            });
+            setUserEvents(eventsData);
+        }));
+        
+        if (currentUser.following && currentUser.following.length > 0) {
+            const followingIds = currentUser.following;
+            const qFollowingPosts = query(collection(db, "posts"), where('authorId', 'in', followingIds), orderBy("createdAt", "desc"), limit(30));
+            unsubscribes.push(onSnapshot(qFollowingPosts, (snapshot) => {
+                setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            }));
+        } else {
+            setFollowingPosts([]);
+        }
+
+        const qChats = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
+        unsubscribes.push(onSnapshot(qChats, async (snapshot) => {
+            const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
+                const chatData = docSnap.data();
+                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
+                if (!otherMemberId) return null;
+                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
+                return { id: docSnap.id, ...chatData, otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId }, };
+            }));
+            setChats(chatsData.filter(Boolean));
+        }));
+
+        return () => unsubscribes.forEach(unsub => unsub());
+    }, [currentUser]); 
+
+    const setCurrentPage = (pageName, param = null) => {
+        setPage(pageName); setPageParam(param);
+        setPageHistory(prev => [...prev, {page: pageName, param: param}]);
+    };
+    
+    const goBack = useCallback(() => {
+        setPageHistory(prevHistory => {
+            if (prevHistory.length <= 1) {
+                 setPage('home'); setPageParam(null); return [{page: 'home', param: null}];
+            }
+            const newHistory = prevHistory.slice(0, prevHistory.length - 1);
+            const lastPage = newHistory[newHistory.length - 1];
+            setPage(lastPage.page || 'home');
+            setPageParam(lastPage.param || null);
+            return newHistory;
+        });
+    }, []);
+
+    if (loading) return <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen"><LoadingSpinner /></div>;
+    if (!currentUser) return <AuthPage />;
+    
+    const renderHeader = () => {
+        const mainPages = ['home'];
+        const isSubPage = !mainPages.includes(page) && pageHistory.length > 1;
+        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'calendar': '달력', 'search': '검색', 'notifications': '알림', 'chatList': '채팅', 'chatPage': pageParam?.recipientName || '채팅' };
+        const title = titleMap[page] || "마을엔 부안";
+        
+        return (
+             <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200">
+                {isSubPage ? ( <button onClick={goBack} className="p-1"><ArrowLeft size={24} /></button> ) : ( <div className="flex items-center gap-2"> <Logo size={28} /> <h1 className="text-xl font-bold text-gray-800">{title}</h1> </div> )}
+                <div className="flex items-center gap-3">
+                     <button onClick={() => setCurrentPage('search')} className="p-1"><Search size={24} className="text-gray-600" /></button>
+                     <button onClick={() => setCurrentPage('chatList')} className="p-1"><MessageSquare size={24} className="text-gray-600" /></button>
+                     <button onClick={() => setCurrentPage('notifications')} className="p-1"><Bell size={24} className="text-gray-600" /></button>
+                     <button onClick={() => setCurrentPage('userProfile', currentUser.uid)} className="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">{currentUser.displayName?.charAt(0) || '?'}</button>
+                </div>
+            </header>
+        );
+    };
+
+    const renderPage = () => {
+        switch (page) {
+            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
+            case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
+            case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser}/>;
+            case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'postDetail': return <PostDetailPage postId={pageParam} setCurrentPage={setCurrentPage} goBack={goBack} currentUser={currentUser} />;
+            case 'userProfile': return <UserProfilePage userId={pageParam} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'search': return <SearchPage posts={posts} setCurrentPage={setCurrentPage} />;
+            case 'notifications': return <NotificationsPage />;
+            case 'chatList': return <ChatListPage chats={chats} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'chatPage': return <ChatPage pageParam={pageParam} currentUser={currentUser} />;
+            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} />;
+        }
+    };
+
+    return (
+        <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
+            {renderHeader()}
+            <main className="pb-24 bg-white"> {renderPage()} </main>
+            {!['write', 'postDetail', 'chatPage'].includes(page) && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
+        </div>
+    );
+}
+
