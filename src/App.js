@@ -1,24 +1,3 @@
-@ -1,25 +1,1286 @@
-import logo from './logo.svg';
-import './App.css';
-
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
@@ -60,7 +39,9 @@ const Logo = ({ size = 28 }) => {
     );
 };
 
-// --- Firebase 설정 (환경 변수 사용을 권장합니다) ---
+// --- Firebase 설정 ---
+// 중요: 이 부분은 실제 Firebase 프로젝트의 설정 값으로 채워야 합니다.
+// Firebase 콘솔에서 값을 복사하여 붙여넣으세요.
 const firebaseConfig = {
     apiKey: "AIzaSyAd7ns6wCL72P7X5_qZxX23sBxdkMhWAeg",
     authDomain: "maeulbung.firebaseapp.com",
@@ -78,14 +59,13 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- 공용 스타일 객체 ---
-// [추가] Tailwind CSS 동적 클래스 문제를 해결하기 위한 스타일 맵
 const categoryStyles = {
     '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
     '맛집': { text: 'text-green-600', bg: 'bg-green-100', bgStrong: 'bg-green-500' },
     '정보': { text: 'text-orange-600', bg: 'bg-orange-100', bgStrong: 'bg-orange-500' },
     '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
     '사건사고': { text: 'text-red-600', bg: 'bg-red-100', bgStrong: 'bg-red-500' },
-    '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' } // 기본값
+    '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
 };
 const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
 
@@ -112,14 +92,13 @@ const Modal = ({ isOpen, onClose, children }) => {
     );
 };
 
-// --- 앱 컴포넌트 ---
+// --- 앱 컴포넌트들 ---
 
 // 로딩 스피너
 const LoadingSpinner = () => (
-    <div className="flex justify-center items-center h-full">
+    <div className="flex justify-center items-center h-full pt-20">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#00462A]"></div>
     </div>
-  );
 );
 
 // 로그인 & 회원가입 페이지
@@ -136,22 +115,13 @@ const AuthPage = () => {
         setLoading(true);
         setError('');
 
-        if (isLoginMode) {
-            // 로그인 처리
-            try {
+        try {
+            if (isLoginMode) {
                 await signInWithEmailAndPassword(auth, email, password);
-            } catch (err) {
-                setError('이메일 또는 비밀번호가 잘못되었습니다.');
-                console.error("Login error:", err);
-            }
-        } else {
-            // 회원가입 처리
-            if (nickname.length < 2) {
-                setError('닉네임은 2자 이상 입력해주세요.');
-                setLoading(false);
-                return;
-            }
-            try {
+            } else {
+                if (nickname.length < 2) {
+                    throw new Error('닉네임은 2자 이상 입력해주세요.');
+                }
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
 
@@ -165,17 +135,33 @@ const AuthPage = () => {
                     followers: [],
                     following: []
                 });
-
-            } catch (err) {
-                if (err.code === 'auth/email-already-in-use') {
-                    setError('이미 사용 중인 이메일입니다.');
-                } else {
-                    setError('회원가입 중 오류가 발생했습니다.');
-                }
-                console.error("Signup error:", err);
             }
+        } catch (err) {
+            console.error("Auth Error:", err);
+            // Firebase 오류 코드에 따른 사용자 친화적 메시지 처리
+            switch (err.code) {
+                case 'auth/operation-not-allowed':
+                    setError("Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화해주세요.");
+                    break;
+                case 'auth/email-already-in-use':
+                    setError('이미 사용 중인 이메일입니다.');
+                    break;
+                case 'auth/invalid-credential':
+                case 'auth/wrong-password':
+                case 'auth/user-not-found':
+                    setError('이메일 또는 비밀번호가 잘못되었습니다.');
+                    break;
+                default:
+                    if (err.message === '닉네임은 2자 이상 입력해주세요.') {
+                        setError(err.message);
+                    } else {
+                        setError('오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                    }
+                    break;
+            }
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     return (
@@ -239,15 +225,11 @@ const AuthPage = () => {
 // 달력 컴포넌트
 const Calendar = ({events = {}, onDateClick = () => {}}) => {
     const [currentDate, setCurrentDate] = useState(new Date());
-
     const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
-    
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-
     const firstDayOfMonth = new Date(year, month, 1).getDay();
     const lastDateOfMonth = new Date(year, month + 1, 0).getDate();
-
     const dates = [];
     for (let i = 0; i < firstDayOfMonth; i++) {
         dates.push(<div key={`empty-${i}`} className="p-2"></div>);
@@ -256,9 +238,7 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
         const d = new Date(year, month, i);
         const isToday = d.toDateString() === new Date().toDateString();
         const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-        
         const hasEvent = events[dateString] && events[dateString].length > 0;
-
         dates.push(
             <div key={i} className="relative py-1 text-center text-sm cursor-pointer" onClick={() => onDateClick(dateString)}>
                 <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>
@@ -268,10 +248,8 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
             </div>
         );
     }
-
     const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
     const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-
     return (
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
             <div className="flex justify-between items-center mb-4">
@@ -288,25 +266,15 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
         </div>
     );
 };
-
-
+        
 // 홈 페이지
 const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
-    
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
-
-    const openDetailModal = (news) => {
-        setSelectedNews(news);
-        setDetailModalOpen(true);
-    };
-
-    const openApplyModal = (news) => {
-        setSelectedNews(news);
-        setApplyModalOpen(true);
-    };
+    const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
+    const openApplyModal = (news) => { setSelectedNews(news); setApplyModalOpen(true); };
     
     const handleApplySubmit = async (applicationData) => {
         try {
@@ -327,21 +295,15 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents }) 
     return (
         <div className="p-4 space-y-8">
              <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
-                {selectedNews && (
-                    <div>
-                        <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2>
-                        <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p>
-                    </div>
-                )}
+                {selectedNews && ( <div> <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2> <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p> </div> )}
             </Modal>
             <Modal isOpen={applyModalOpen} onClose={() => setApplyModalOpen(false)}>
                 {selectedNews && <ApplyForm news={selectedNews} onSubmit={handleApplySubmit} />}
             </Modal>
-            
             <section>
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-bold">지금 부안에서는</h2>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 {'>'}</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
                 </div>
                 <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {buanNews.map((news, index) => (
@@ -358,33 +320,33 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents }) 
                     ))}
                 </div>
             </section>
-            
             <section>
                 <div className="flex justify-between items-center mb-3">
                      <h2 className="text-lg font-bold">부안 달력</h2>
-                     <a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 {'>'}</a>
+                     <a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a>
                 </div>
                 <Calendar events={userEvents} />
             </section>
-
             <section>
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-bold">지금 인기있는 글</h2>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 {'>'}</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
                 </div>
                 <div className="space-y-3">
                     {popularPosts.length > 0 ? (
-                         popularPosts.map(post => (
-                            <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
-                                {/* [수정] Tailwind CSS 동적 클래스 문제 해결 */}
-                                <span className={`text-xs font-bold ${getCategoryStyle(post.category).text} ${getCategoryStyle(post.category).bg} px-2 py-1 rounded-md`}>{post.category}</span>
-                                <p className="truncate flex-1">{post.title}</p>
-                                <div className="flex items-center text-xs text-gray-400 gap-2">
-                                    <Heart size={14} className="text-red-400"/>
-                                    <span>{post.likes?.length || 0}</span>
+                         popularPosts.map(post => {
+                            const style = getCategoryStyle(post.category);
+                            return (
+                                <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
+                                    <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
+                                    <p className="truncate flex-1">{post.title}</p>
+                                    <div className="flex items-center text-xs text-gray-400 gap-2">
+                                        <Heart size={14} className="text-red-400"/>
+                                        <span>{post.likes?.length || 0}</span>
+                                    </div>
                                 </div>
-                            </div>
-                        ))
+                            );
+                         })
                     ) : (
                         <p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>
                     )}
@@ -400,31 +362,14 @@ const NewsPage = ({ buanNews, currentUser }) => {
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
-
     const tags = ['전체', '청년', '문화', '육아', '교육', '노인'];
-
-    const filteredNews = activeTag === '전체'
-        ? buanNews
-        : buanNews.filter(news => news.tags.includes(activeTag));
-
-    const openDetailModal = (news) => {
-        setSelectedNews(news);
-        setDetailModalOpen(true);
-    };
-
-    const openApplyModal = (news) => {
-        setSelectedNews(news);
-        setApplyModalOpen(true);
-    };
+    const filteredNews = activeTag === '전체' ? buanNews : buanNews.filter(news => news.tags.includes(activeTag));
+    const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
+    const openApplyModal = (news) => { setSelectedNews(news); setApplyModalOpen(true); };
 
     const handleApplySubmit = async (applicationData) => {
         try {
-            await addDoc(collection(db, "applications"), {
-                ...applicationData,
-                eventName: selectedNews.title,
-                userId: currentUser.uid,
-                submittedAt: Timestamp.now(),
-            });
+            await addDoc(collection(db, "applications"), { ...applicationData, eventName: selectedNews.title, userId: currentUser.uid, submittedAt: Timestamp.now(), });
             alert('신청이 완료되었습니다.');
             setApplyModalOpen(false);
         } catch (error) {
@@ -435,31 +380,21 @@ const NewsPage = ({ buanNews, currentUser }) => {
 
     return (
         <div className="p-4">
-            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2">
+            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {tags.map(tag => (
-                    <button 
-                        key={tag} 
-                        onClick={() => setActiveTag(tag)}
-                        className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${activeTag === tag ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}
-                    >
+                    <button key={tag} onClick={() => setActiveTag(tag)}
+                        className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${activeTag === tag ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}>
                         #{tag}
                     </button>
                 ))}
             </div>
-
             <div className="space-y-4">
                 <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
-                    {selectedNews && (
-                        <div>
-                            <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2>
-                            <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p>
-                        </div>
-                    )}
+                    {selectedNews && (<div><h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2><p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p></div>)}
                 </Modal>
                 <Modal isOpen={applyModalOpen} onClose={() => setApplyModalOpen(false)}>
                     {selectedNews && <ApplyForm news={selectedNews} onSubmit={handleApplySubmit} />}
                 </Modal>
-
                 {filteredNews.map((news, index) => (
                     <div key={index} className="w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col">
                         <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" />
@@ -482,31 +417,14 @@ const CalendarPage = ({ userEvents, currentUser }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);
     const [eventTitle, setEventTitle] = useState('');
-    
-    const handleDateClick = (date) => {
-        setSelectedDate(date);
-        setIsModalOpen(true);
-    };
-    
+    const handleDateClick = (date) => { setSelectedDate(date); setIsModalOpen(true); };
     const handleAddEvent = async () => {
-        if (!eventTitle.trim()) {
-            alert("일정 제목을 입력해주세요.");
-            return;
-        }
+        if (!eventTitle.trim()) { alert("일정 제목을 입력해주세요."); return; }
         try {
-            await addDoc(collection(db, 'users', currentUser.uid, 'events'), {
-                title: eventTitle,
-                date: selectedDate,
-                createdAt: Timestamp.now()
-            });
-            setIsModalOpen(false);
-            setEventTitle('');
-        } catch(error) {
-            console.error("Error adding event: ", error);
-            alert("일정 추가 중 오류가 발생했습니다.");
-        }
+            await addDoc(collection(db, 'users', currentUser.uid, 'events'), { title: eventTitle, date: selectedDate, createdAt: Timestamp.now() });
+            setIsModalOpen(false); setEventTitle('');
+        } catch(error) { console.error("Error adding event: ", error); alert("일정 추가 중 오류가 발생했습니다."); }
     };
-
     const eventsForSelectedDate = selectedDate && userEvents[selectedDate] ? userEvents[selectedDate] : [];
 
     return (
@@ -515,26 +433,17 @@ const CalendarPage = ({ userEvents, currentUser }) => {
                 <div className="p-2">
                     <h3 className="text-lg font-bold mb-4">{selectedDate}</h3>
                     <div className="mb-4">
-                        <input
-                            type="text"
-                            value={eventTitle}
-                            onChange={(e) => setEventTitle(e.target.value)}
-                            placeholder="새로운 일정"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#00462A] focus:border-[#00462A]"
-                        />
+                        <input type="text" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="새로운 일정"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#00462A] focus:border-[#00462A]" />
                     </div>
-                    <button onClick={handleAddEvent} className="w-full bg-[#00462A] text-white font-bold py-2 px-4 rounded-lg hover:bg-[#003a22]">
-                        저장
-                    </button>
+                    <button onClick={handleAddEvent} className="w-full bg-[#00462A] text-white font-bold py-2 px-4 rounded-lg hover:bg-[#003a22]"> 저장 </button>
                     <div className="mt-6">
                         <h4 className="font-bold mb-2">이 날의 일정:</h4>
                         {eventsForSelectedDate.length > 0 ? (
                             <ul className="list-disc list-inside space-y-1">
                                 {eventsForSelectedDate.map(event => <li key={event.id}>{event.title}</li>)}
                             </ul>
-                        ) : (
-                            <p className="text-gray-500">등록된 일정이 없습니다.</p>
-                        )}
+                        ) : ( <p className="text-gray-500">등록된 일정이 없습니다.</p> )}
                     </div>
                 </div>
             </Modal>
@@ -545,24 +454,13 @@ const CalendarPage = ({ userEvents, currentUser }) => {
 
 // 신청하기 폼
 const ApplyForm = ({ news, onSubmit }) => {
-    const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [dob, setDob] = useState('');
-    const [agreed, setAgreed] = useState(false);
-
+    const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [dob, setDob] = useState(''); const [agreed, setAgreed] = useState(false);
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (!name || !phone || !dob) {
-            alert('모든 정보를 입력해주세요.');
-            return;
-        }
-        if (!agreed) {
-            alert('개인정보 수집 및 이용에 동의해주세요.');
-            return;
-        }
+        if (!name || !phone || !dob) { alert('모든 정보를 입력해주세요.'); return; }
+        if (!agreed) { alert('개인정보 수집 및 이용에 동의해주세요.'); return; }
         onSubmit({ name, phone, dob });
     };
-
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <h2 className="text-2xl font-bold mb-4">{news.title}</h2>
@@ -582,9 +480,7 @@ const ApplyForm = ({ news, onSubmit }) => {
                 <div className="flex items-center h-5">
                     <input id="agreement" name="agreement" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="focus:ring-[#00462A] h-4 w-4 text-[#00462A] border-gray-300 rounded" />
                 </div>
-                <div className="ml-3 text-sm">
-                    <label htmlFor="agreement" className="font-medium text-gray-700">개인정보제공에 동의합니다.</label>
-                </div>
+                <div className="ml-3 text-sm"> <label htmlFor="agreement" className="font-medium text-gray-700">개인정보제공에 동의합니다.</label> </div>
             </div>
             <button type="submit" className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#00462A] hover:bg-[#003a22] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00462A]">
                 제출하기
@@ -593,14 +489,11 @@ const ApplyForm = ({ news, onSubmit }) => {
     );
 };
 
-
 // 게시판 페이지
 const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
     const [filter, setFilter] = useState('전체');
     const categories = ['전체', '일상', '맛집', '정보', '질문', '사건사고'];
-    
     const filteredPosts = filter === '전체' ? posts : posts.filter(p => p.category === filter);
-    
     const timeSince = (date) => {
         if (!date) return '';
         const seconds = Math.floor((new Date() - date.toDate()) / 1000);
@@ -611,34 +504,27 @@ const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
         if (hours < 24) return `${hours}시간 전`;
         const days = Math.floor(hours / 24);
         if (days < 7) return `${days}일 전`;
-        const weeks = Math.floor(days / 7);
-        if (weeks < 5) return `${weeks}주 전`;
-        const months = Math.floor(days / 30);
-        if (months < 12) return `${months}달 전`;
-        const years = Math.floor(days / 365);
-        return `${years}년 전`;
+        return date.toLocaleDateString('ko-KR');
     };
 
     return (
         <div className="p-4">
-            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2">
+            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {categories.map(cat => (
-                    <button 
-                        key={cat} 
-                        onClick={() => setFilter(cat)}
-                        className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${filter === cat ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}
-                    >
+                    <button key={cat} onClick={() => setFilter(cat)}
+                        className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${filter === cat ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}>
                         {cat}
                     </button>
                 ))}
             </div>
             <div className="space-y-3">
                  {filteredPosts.length > 0 ? (
-                    filteredPosts.map(post => (
+                    filteredPosts.map(post => {
+                        const style = getCategoryStyle(post.category);
+                        return (
                         <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
                             <div className="flex items-center gap-2 mb-2">
-                                {/* [수정] Tailwind CSS 동적 클래스 문제 해결 */}
-                                <span className={`text-xs font-bold ${getCategoryStyle(post.category).text} ${getCategoryStyle(post.category).bg} px-2 py-1 rounded-md`}>{post.category}</span>
+                                <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
                                 <h3 className="font-bold text-md truncate flex-1">{post.title}</h3>
                             </div>
                             <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
@@ -660,90 +546,57 @@ const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
                                </div>
                             </div>
                         </div>
-                    ))
-                ) : (
-                    <p className="text-center text-gray-500 py-10">해당 카테고리에 글이 없습니다.</p>
-                )}
+                        );
+                    })
+                ) : ( <p className="text-center text-gray-500 py-10">해당 카테고리에 글이 없습니다.</p> )}
             </div>
-             <button
-                onClick={() => setCurrentPage('write')}
-                className="fixed bottom-24 right-5 bg-[#00462A] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-[#003a22] transition-transform transform hover:scale-110"
-            >
+             <button onClick={() => setCurrentPage('write')}
+                className="fixed bottom-24 right-5 bg-[#00462A] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-[#003a22] transition-transform transform hover:scale-110">
                 <PlusCircle size={28} />
             </button>
         </div>
     );
 };
 
-
 // 글쓰기 페이지
 const WritePage = ({ setCurrentPage, currentUser }) => {
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState('');
-    const [category, setCategory] = useState('일상');
+    const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [category, setCategory] = useState('일상');
     const categories = ['일상', '맛집', '정보', '질문', '사건사고'];
-
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) {
-            alert('제목과 내용을 모두 입력해주세요.');
-            return;
-        }
-
+        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
         try {
             await addDoc(collection(db, 'posts'), {
-                title,
-                content,
-                category,
-                // [삭제] categoryColor는 더 이상 필요 없음
-                authorId: currentUser.uid,
-                authorName: currentUser.displayName,
-                createdAt: Timestamp.now(),
-                likes: [],
-                bookmarks: [],
-                commentCount: 0,
+                title, content, category, authorId: currentUser.uid, authorName: currentUser.displayName,
+                createdAt: Timestamp.now(), likes: [], bookmarks: [], commentCount: 0,
             });
             setCurrentPage('board');
         } catch (error) {
-            console.error("Error adding document: ", error);
-            alert('글을 등록하는 중 오류가 발생했습니다.');
+            console.error("Error adding document: ", error); alert('글을 등록하는 중 오류가 발생했습니다.');
         }
     };
-
     return (
         <div>
             <div className="p-4 flex items-center border-b">
-                <button onClick={() => setCurrentPage('board')} className="p-2 -ml-2">
-                    <ArrowLeft />
-                </button>
+                <button onClick={() => setCurrentPage('board')} className="p-2 -ml-2"> <ArrowLeft /> </button>
                 <h2 className="text-lg font-bold mx-auto">글쓰기</h2>
                  <button onClick={handleSubmit} className="text-lg font-bold text-[#00462A]">완료</button>
             </div>
             <div className="p-4 space-y-4">
-                <div className="flex space-x-2 mb-4 overflow-x-auto pb-2">
-                     {categories.map(cat => (
-                        <button 
-                            key={cat} 
-                            onClick={() => setCategory(cat)}
-                            // [수정] Tailwind CSS 동적 클래스 문제 해결
-                            className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${category === cat ? `${getCategoryStyle(cat).bgStrong} text-white` : 'bg-gray-200 text-gray-700'}`}
-                        >
+                <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                     {categories.map(cat => {
+                        const style = getCategoryStyle(cat);
+                        return(
+                        <button key={cat} onClick={() => setCategory(cat)}
+                            className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${category === cat ? `${style.bgStrong} text-white` : 'bg-gray-200 text-gray-700'}`}>
                             {cat}
                         </button>
-                    ))}
+                        );
+                    })}
                 </div>
-                <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="제목"
-                    className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]"
-                />
-                <textarea
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="내용을 입력하세요..."
-                    className="w-full h-64 p-2 focus:outline-none resize-none"
-                />
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목"
+                    className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
+                <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..."
+                    className="w-full h-64 p-2 focus:outline-none resize-none" />
             </div>
         </div>
     );
@@ -751,119 +604,62 @@ const WritePage = ({ setCurrentPage, currentUser }) => {
 
 // 글 상세 페이지
 const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
-    const [post, setPost] = useState(null);
-    const [comments, setComments] = useState([]);
-    const [newComment, setNewComment] = useState('');
-    const [loading, setLoading] = useState(true);
-
+    const [post, setPost] = useState(null); const [comments, setComments] = useState([]); const [newComment, setNewComment] = useState(''); const [loading, setLoading] = useState(true);
     const postRef = doc(db, `posts`, postId);
     
     useEffect(() => {
         const unsubscribePost = onSnapshot(postRef, (doc) => {
-            if (doc.exists()) {
-                setPost({ id: doc.id, ...doc.data() });
-            } else {
-                alert("삭제된 게시글입니다.");
-                goBack();
-            }
+            if (doc.exists()) { setPost({ id: doc.id, ...doc.data() }); } else { alert("삭제된 게시글입니다."); goBack(); }
             setLoading(false);
         });
-
-        const commentsRef = collection(db, `posts/${postId}/comments`);
-        const q = query(commentsRef);
+        const commentsRef = collection(db, `posts/${postId}/comments`); const q = query(commentsRef);
         const unsubscribeComments = onSnapshot(q, (snapshot) => {
             const commentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            commentsData.sort((a,b) => a.createdAt.toMillis() - b.createdAt.toMillis());
-            setComments(commentsData);
+            commentsData.sort((a,b) => a.createdAt.toMillis() - b.createdAt.toMillis()); setComments(commentsData);
         });
-
-        return () => {
-            unsubscribePost();
-            unsubscribeComments();
-        };
+        return () => { unsubscribePost(); unsubscribeComments(); };
     }, [postId, goBack]);
-
-    const handleLike = async () => {
-        if (!post || !currentUser) return;
-        const liked = post.likes?.includes(currentUser.uid);
-        try {
-            await updateDoc(postRef, {
-                likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
-            });
-        } catch (e) {
-            console.error("Error updating like: ", e);
-        }
-    };
-
-    const handleBookmark = async () => {
-        if (!post || !currentUser) return;
-        const bookmarked = post.bookmarks?.includes(currentUser.uid);
-        try {
-            await updateDoc(postRef, {
-                bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
-            });
-        } catch(e) {
-            console.error("Error updating bookmark:", e);
-        }
-    };
     
+    const handleLike = async () => {
+        if (!post || !currentUser) return; const liked = post.likes?.includes(currentUser.uid);
+        try { await updateDoc(postRef, { likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
+        catch (e) { console.error("Error updating like: ", e); }
+    };
+    const handleBookmark = async () => {
+        if (!post || !currentUser) return; const bookmarked = post.bookmarks?.includes(currentUser.uid);
+        try { await updateDoc(postRef, { bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
+        catch(e) { console.error("Error updating bookmark:", e); }
+    };
     const handleCommentSubmit = async () => {
         if (!newComment.trim() || !currentUser) return;
         try {
-            const commentsRef = collection(db, `posts/${postId}/comments`);
-            await addDoc(commentsRef, {
-                text: newComment.trim(),
-                authorId: currentUser.uid,
-                authorName: currentUser.displayName,
-                createdAt: Timestamp.now(),
-                likes: [],
-            });
-            await updateDoc(postRef, {
-                commentCount: increment(1)
-            });
+            await addDoc(collection(db, `posts/${postId}/comments`), { text: newComment.trim(), authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(), likes: [] });
+            await updateDoc(postRef, { commentCount: increment(1) });
             setNewComment('');
-        } catch (e) {
-            console.error("Error adding comment: ", e);
-        }
+        } catch (e) { console.error("Error adding comment: ", e); }
     };
-    
     const handleCommentLike = async (commentId, currentLikes = []) => {
-        if (!currentUser) return;
-        const commentRef = doc(db, `posts/${postId}/comments`, commentId);
-        const liked = currentLikes.includes(currentUser.uid);
-        try {
-            await updateDoc(commentRef, {
-                likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
-            });
-        } catch(e) {
-            console.error("Error liking comment:", e);
-        }
+        if (!currentUser) return; const commentRef = doc(db, `posts/${postId}/comments`, commentId); const liked = currentLikes.includes(currentUser.uid);
+        try { await updateDoc(commentRef, { likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
+        catch(e) { console.error("Error liking comment:", e); }
     };
-    
     const timeSince = (date) => {
-        if (!date) return '';
-        const seconds = Math.floor((new Date() - date.toDate()) / 1000);
-        if (seconds < 60) return `방금 전`;
-        const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return `${minutes}분 전`;
-        const hours = Math.floor(minutes / 60);
-        if (hours < 24) return `${hours}시간 전`;
-        const days = Math.floor(hours / 24);
+        if (!date) return ''; const seconds = Math.floor((new Date() - date.toDate()) / 1000);
+        if (seconds < 60) return `방금 전`; const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}분 전`; const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}시간 전`; const days = Math.floor(hours / 24);
         return `${days}일 전`;
     };
 
-    if (loading) return <LoadingSpinner />;
-    if (!post) return null;
+    if (loading) return <LoadingSpinner />; if (!post) return null;
+    const isLiked = post.likes?.includes(currentUser.uid); const isBookmarked = post.bookmarks?.includes(currentUser.uid);
+    const style = getCategoryStyle(post.category);
     
-    const isLiked = post.likes?.includes(currentUser.uid);
-    const isBookmarked = post.bookmarks?.includes(currentUser.uid);
-
     return (
         <div className="pb-20">
             <div className="p-4">
                 <div className="mb-4 pb-4 border-b">
-                    {/* [수정] Tailwind CSS 동적 클래스 문제 해결 */}
-                    <span className={`text-xs font-bold ${getCategoryStyle(post.category).text} ${getCategoryStyle(post.category).bg} px-2 py-1 rounded-md mb-2 inline-block`}>{post.category}</span>
+                    <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md mb-2 inline-block`}>{post.category}</span>
                     <div className="flex justify-between items-start mt-2">
                         <h1 className="text-2xl font-bold flex-1 pr-4">{post.title}</h1>
                         <button onClick={handleBookmark} className="p-1 -mr-1">
@@ -878,18 +674,15 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
                     </div>
                     <p className="text-gray-800 leading-relaxed whitespace-pre-wrap mt-4">{post.content}</p>
                 </div>
-
                 <div className="flex items-center gap-4 mb-4">
                     <button onClick={handleLike} className="flex items-center gap-1 text-gray-600 hover:text-red-500">
                         <Heart size={20} className={isLiked ? "text-red-500 fill-current" : ""} />
                         <span>좋아요 {post.likes?.length || 0}</span>
                     </button>
                     <div className="flex items-center gap-1 text-gray-600">
-                        <MessageCircle size={20} />
-                        <span>댓글 {comments.length}</span>
+                        <MessageCircle size={20} /> <span>댓글 {comments.length}</span>
                     </div>
                 </div>
-
                 <div className="space-y-4">
                     {comments.map(comment => (
                         <div key={comment.id} className="flex gap-3">
@@ -911,19 +704,13 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
                     ))}
                 </div>
             </div>
-            
             <div className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto bg-white border-t p-3">
                 <div className="relative flex items-center">
-                    <input
-                        type="text"
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="댓글을 입력하세요."
+                    <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="댓글을 입력하세요."
                         className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                        onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit()} // [개선] Enter 키로도 전송
-                    />
+                        onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit()} />
                     <button onClick={handleCommentSubmit} className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
-                        <Send size={20} /> {/* [개선] 아이콘 변경 */}
+                        <Send size={20} />
                     </button>
                 </div>
             </div>
@@ -946,23 +733,16 @@ const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
                 setIsFollowing(userData.followers?.includes(currentUser.uid) || false);
             }
         });
-
         const userPostsQuery = query(collection(db, 'posts'), where("authorId", "==", userId));
         const unsubscribePosts = onSnapshot(userPostsQuery, (snapshot) => {
-            const postsData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-            setUserPosts(postsData);
+            setUserPosts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
         });
-
-        return () => {
-            unsubscribe();
-            unsubscribePosts();
-        };
+        return () => { unsubscribe(); unsubscribePosts(); };
     }, [userId, currentUser.uid]);
 
     const handleFollow = async () => {
         const currentUserRef = doc(db, 'users', currentUser.uid);
         const profileUserRef = doc(db, 'users', userId);
-
         if(isFollowing){
             await updateDoc(currentUserRef, { following: arrayRemove(userId) });
             await updateDoc(profileUserRef, { followers: arrayRemove(currentUser.uid) });
@@ -1009,7 +789,6 @@ const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
                     </button>
                 )}
             </div>
-
             <div className="space-y-3">
                 <h3 className="text-lg font-bold">작성한 글</h3>
                 {userPosts.length > 0 ? userPosts.map(post => (
@@ -1017,33 +796,23 @@ const UserProfilePage = ({ userId, setCurrentPage, posts, currentUser }) => {
                         <h4 className="font-bold text-md truncate mb-1">{post.title}</h4>
                         <p className="text-gray-600 text-sm truncate">{post.content}</p>
                     </div>
-                )) : (
-                    <p className="text-center text-gray-500 py-10">아직 작성한 글이 없습니다.</p>
-                )}
+                )) : ( <p className="text-center text-gray-500 py-10">아직 작성한 글이 없습니다.</p> )}
             </div>
         </div>
     );
 };
 
-
 // 하단 네비게이션
 const BottomNav = ({ currentPage, setCurrentPage }) => {
     const navItems = [
-        { id: 'home', icon: Home, label: '홈' },
-        { id: 'board', icon: LayoutGrid, label: '게시판' },
-        { id: 'news', icon: Newspaper, label: '소식' },
-        { id: 'clubs', icon: Users, label: '클럽' },
-        { id: 'benefits', icon: TicketPercent, label: '혜택' },
+        { id: 'home', icon: 'Home', label: '홈' }, { id: 'board', icon: 'LayoutGrid', label: '게시판' },
+        { id: 'news', icon: 'Newspaper', label: '소식' }, { id: 'clubs', icon: 'Users', label: '클럽' },
+        { id: 'benefits', icon: 'TicketPercent', label: '혜택' },
     ];
-
     const handleNavClick = (id) => {
-        if (['clubs', 'benefits'].includes(id)) {
-            alert('서비스 준비중입니다.');
-        } else {
-            setCurrentPage(id);
-        }
+        if (['clubs', 'benefits'].includes(id)) { alert('서비스 준비중입니다.'); }
+        else { setCurrentPage(id); }
     };
-    
     return (
         <footer className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto z-20">
             <div className="bg-white px-3 pt-2 pb-3 border-t border-gray-200 shadow-[0_-1px_4px_rgba(0,0,0,0.05)]">
@@ -1052,7 +821,7 @@ const BottomNav = ({ currentPage, setCurrentPage }) => {
                         const isActive = currentPage === item.id;
                         return (
                             <a href="#" key={item.id} onClick={(e) => { e.preventDefault(); handleNavClick(item.id); }} className="text-center p-2 rounded-lg w-1/5">
-                                <item.icon className={`w-6 h-6 mx-auto ${isActive ? 'text-[#00462A]' : 'text-gray-500'}`} />
+                                <Icon name={item.icon} className={`w-6 h-6 mx-auto ${isActive ? 'text-[#00462A]' : 'text-gray-500'}`} />
                                 <span className={`text-xs font-medium ${isActive ? 'text-[#00462A] font-bold' : 'text-gray-500'}`}>{item.label}</span>
                             </a>
                         );
@@ -1069,47 +838,22 @@ const NotificationsPage = () => {
         { id: 1, text: '새로운 이벤트 "나의 삶, 한 권의 책"이 등록되었습니다.', time: '2시간 전' },
         { id: 2, text: '관심있는 이벤트 "7월 행복UP클래스" 신청이 시작되었습니다.', time: '8시간 전' },
     ];
-
-    return (
-        <div className="p-4">
-            {notifications.map(notif => (
-                <div key={notif.id} className="p-3 border-b border-gray-200">
-                    <p className="text-sm">{notif.text}</p>
-                    <p className="text-xs text-gray-500 mt-1">{notif.time}</p>
-                </div>
-            ))}
-        </div>
-    );
+    return ( <div className="p-4"> {notifications.map(notif => ( <div key={notif.id} className="p-3 border-b border-gray-200"> <p className="text-sm">{notif.text}</p> <p className="text-xs text-gray-500 mt-1">{notif.time}</p> </div> ))} </div> );
 };
 
 // 검색 페이지
 const SearchPage = ({ posts, setCurrentPage }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    
-    const filteredPosts = searchTerm
-        ? posts.filter(post => 
-            post.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            post.content.toLowerCase().includes(searchTerm.toLowerCase())
-          )
-        : [];
-
+    const filteredPosts = searchTerm ? posts.filter(post => post.title.toLowerCase().includes(searchTerm.toLowerCase()) || post.content.toLowerCase().includes(searchTerm.toLowerCase())) : [];
     return (
         <div className="p-4">
             <div className="relative mb-4">
-                <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="검색어를 입력하세요..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                />
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="검색어를 입력하세요..."
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
+                <Icon name="Search" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             </div>
-
             <div className="space-y-3">
-                {searchTerm && filteredPosts.length === 0 && (
-                    <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p>
-                )}
+                {searchTerm && filteredPosts.length === 0 && ( <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p> )}
                 {filteredPosts.map(post => (
                      <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
                         <h3 className="font-bold text-md truncate mb-1">{post.title}</h3>
@@ -1121,9 +865,8 @@ const SearchPage = ({ posts, setCurrentPage }) => {
     );
 }
 
-export default App;
 // 메인 앱
-export default function App() {
+function App() {
     const [page, setPage] = useState('home');
     const [pageHistory, setPageHistory] = useState(['home']);
     const [pageParam, setPageParam] = useState(null);
@@ -1133,24 +876,9 @@ export default function App() {
     const [userEvents, setUserEvents] = useState({});
 
     const buanNews = [
-        {
-            title: "취업! 치얼업!",
-            imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea",
-            tags: ['청년'],
-            content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`
-        },
-        {
-            title: "나의 삶, 한 권의 책",
-            imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__",
-            tags: ['문화'],
-            content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n📖여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`
-        },
-        {
-            title: "7월 행복UP클래스 참여자 모집",
-            imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M",
-            tags: ['문화'],
-            content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`
-        }
+        { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
+        { title: "나의 삶, 한 권의 책", imageUrl: "https://lh3.googleusercontent.com/d/1dTRIAP6fZD0ppTWCjyvn_6nY7joy5v__", tags: ['문화'], content: `2025 생애사 글쓰기 「나의 삶, 한 권의 책」 참여자 모집\n✍️ 2025 생애사 글쓰기\n「나의 삶, 한 권의 책」\n참여자를 모집합니다.\n\n석정문학을 톺아보며\n나를 내세우는 말 대신\n나를 회고하는 문화예술 글쓰기\n\n📖여러분의 이야기가\n한 권의 책으로 남는 순간을 만나보세요.\n\n✅모집기간 : 2025. 6. 18. ~ 선착순 마감\n✅모집대상 : 부안군민 성인 20명 내외\n✅접수방법 : 전화접수\n📞부안군문화재단 063-584-6212\n✅운영기간 : 2025. 7. ~ 10. (총 12회차)\n🕕매주(금) 오후 6시 30분 ~ 8시 30분\n✅운영장소: 부안석정문학관 1층 프로그램실`},
+        { title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
     ];
 
    useEffect(() => {
@@ -1158,12 +886,7 @@ export default function App() {
             if (user) {
                 const userRef = doc(db, "users", user.uid);
                 const userSnap = await getDoc(userRef);
-
-                if (userSnap.exists()) {
-                    setCurrentUser({ uid: user.uid, ...user, ...userSnap.data() });
-                } else {
-                    setCurrentUser(user);
-                }
+                setCurrentUser({ uid: user.uid, ...user, ...(userSnap.exists() ? userSnap.data() : {}) });
             } else {
                 setCurrentUser(null);
             }
@@ -1172,102 +895,57 @@ export default function App() {
         return () => unsubscribe();
     }, []);
 
-
     useEffect(() => {
-        if (!currentUser?.uid) {
-            setPosts([]);
-            setUserEvents({});
-            return;
-        }
-
+        if (!currentUser?.uid) { setPosts([]); setUserEvents({}); return; }
         const qPosts = query(collection(db, "posts"));
         const unsubscribePosts = onSnapshot(qPosts, (snapshot) => {
             const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             postsData.sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis());
             setPosts(postsData);
         }, error => console.error("Error fetching posts:", error));
-
         const qEvents = query(collection(db, `users/${currentUser.uid}/events`));
         const unsubscribeEvents = onSnapshot(qEvents, (snapshot) => {
             const eventsData = {};
             snapshot.docs.forEach(doc => {
                 const event = { id: doc.id, ...doc.data() };
-                const date = event.date;
-                if (!eventsData[date]) {
-                    eventsData[date] = [];
-                }
-                eventsData[date].push(event);
+                if (!eventsData[event.date]) eventsData[event.date] = [];
+                eventsData[event.date].push(event);
             });
             setUserEvents(eventsData);
         }, error => console.error("Error fetching events:", error));
-
-        return () => {
-            unsubscribePosts();
-            unsubscribeEvents();
-        };
+        return () => { unsubscribePosts(); unsubscribeEvents(); };
     }, [currentUser?.uid]); 
 
     const setCurrentPage = (pageName, param = null) => {
-        setPage(pageName);
-        setPageParam(param);
+        setPage(pageName); setPageParam(param);
         if (pageName !== page) {
-            setPageHistory(prevHistory => [...prevHistory, pageName]);
+            setPageHistory(prev => [...prev, pageName]);
         }
     };
     
-    // [수정] useCallback으로 감싸서 자식 컴포넌트에 넘길 때 안정성 확보
     const goBack = useCallback(() => {
-        const newHistory = [...pageHistory];
-        newHistory.pop();
+        const newHistory = [...pageHistory]; newHistory.pop();
         const prevPage = newHistory[newHistory.length - 1] || 'home';
-        setPage(prevPage);
-        setPageHistory(newHistory);
+        setPage(prevPage); setPageHistory(newHistory);
     }, [pageHistory]);
 
-
-    if (loading) {
-        return (
-            <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen">
-                <LoadingSpinner />
-            </div>
-        );
-    }
-
-    if (!currentUser) {
-        return <AuthPage />;
-    }
-    
+    if (loading) { return ( <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen"> <LoadingSpinner /> </div> ); }
+    if (!currentUser) { return <AuthPage />; }
     
     const renderHeader = () => {
         const mainPages = ['home', 'board', 'news', 'clubs', 'benefits', 'calendar'];
-        const isSubPage = !mainPages.includes(page) || pageHistory.length > 1; // [개선] 히스토리 기반으로 뒤로가기 버튼 표시
-        
-        const titleMap = {
-            'home': '마을엔 부안',
-            'news': '소식',
-            'board': '게시판',
-            'calendar': '달력',
-            'search': '검색',
-            'notifications': '알림',
-        };
+        const isSubPage = !mainPages.includes(page) || pageHistory.length > 1;
+        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'calendar': '달력', 'search': '검색', 'notifications': '알림' };
         const title = titleMap[page] || "마을엔 부안";
         
         return (
              <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200">
-                {isSubPage ? (
-                    <button onClick={goBack} className="p-1"><ArrowLeft size={24} /></button>
-                ) : (
-                    <div className="flex items-center gap-2">
-                        <Logo size={28} />
-                        <h1 className="text-xl font-bold text-gray-800">{title}</h1>
-                    </div>
-                )}
-                
+                {isSubPage ? ( <button onClick={goBack} className="p-1"><ArrowLeft size={24} /></button> ) :
+                    ( <div className="flex items-center gap-2"> <Logo size={28} /> <h1 className="text-xl font-bold text-gray-800">{title}</h1> </div> )}
                 <div className="flex items-center gap-3">
                      <button onClick={() => setCurrentPage('search')} className="p-1"><Search size={24} className="text-gray-600" /></button>
                      <button onClick={() => setCurrentPage('notifications')} className="p-1"><Bell size={24} className="text-gray-600" /></button>
                      <button onClick={() => setCurrentPage('userProfile', currentUser.uid)} className="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">
-                        {/* [수정] displayName이 없을 경우 대비 */}
                         {currentUser.displayName?.charAt(0) || '?'}
                      </button>
                 </div>
@@ -1277,36 +955,26 @@ export default function App() {
 
     const renderPage = () => {
         switch (page) {
-            case 'home':
-                return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} />;
-            case 'news':
-                return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
-            case 'calendar':
-                return <CalendarPage userEvents={userEvents} currentUser={currentUser}/>;
-            case 'board':
-                return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
-            case 'write':
-                return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
-            case 'postDetail':
-                return <PostDetailPage postId={pageParam} setCurrentPage={setCurrentPage} goBack={goBack} currentUser={currentUser} />;
-            case 'userProfile':
-                return <UserProfilePage userId={pageParam} setCurrentPage={setCurrentPage} posts={posts} currentUser={currentUser} />;
-            case 'search':
-                return <SearchPage posts={posts} setCurrentPage={setCurrentPage} />;
-            case 'notifications':
-                return <NotificationsPage />;
-            default:
-                return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} />;
+            case 'home': return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} />;
+            case 'news': return <NewsPage buanNews={buanNews} currentUser={currentUser} />;
+            case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser}/>;
+            case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'postDetail': return <PostDetailPage postId={pageParam} setCurrentPage={setCurrentPage} goBack={goBack} currentUser={currentUser} />;
+            case 'userProfile': return <UserProfilePage userId={pageParam} setCurrentPage={setCurrentPage} posts={posts} currentUser={currentUser} />;
+            case 'search': return <SearchPage posts={posts} setCurrentPage={setCurrentPage} />;
+            case 'notifications': return <NotificationsPage />;
+            default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} />;
         }
     };
 
     return (
         <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
             {renderHeader()}
-            <main className="pb-24 bg-white">
-                {renderPage()}
-            </main>
+            <main className="pb-24 bg-white"> {renderPage()} </main>
             {!['write', 'postDetail'].includes(page) && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
         </div>
     );
 }
+
+export default App;
