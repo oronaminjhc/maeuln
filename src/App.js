@@ -24,7 +24,9 @@ import {
     Timestamp,
     where,
     orderBy,
-    limit
+    limit,
+    deleteDoc,
+    getDocs
 } from 'firebase/firestore';
 import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare } from 'lucide-react';
 
@@ -56,12 +58,15 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// --- 새로운 카테고리 스타일 ---
 const categoryStyles = {
     '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
-    '맛집': { text: 'text-green-600', bg: 'bg-green-100', bgStrong: 'bg-green-500' },
-    '정보': { text: 'text-orange-600', bg: 'bg-orange-100', bgStrong: 'bg-orange-500' },
+    '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' },
+    '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' },
+    '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' },
+    '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' },
+    '부안맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
     '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
-    '사건사고': { text: 'text-red-600', bg: 'bg-red-100', bgStrong: 'bg-red-500' },
     '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
 };
 const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
@@ -110,7 +115,7 @@ const AuthPage = () => {
                 await updateProfile(user, { displayName: nickname });
                 const userRef = doc(db, "users", user.uid);
                 await setDoc(userRef, {
-                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: []
+                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: [], likedNews: []
                 });
             }
         } catch (err) {
@@ -185,7 +190,7 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
     );
 };
         
-const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, followingPosts }) => {
+const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, followingPosts, handleLikeNews, likedNews }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -215,16 +220,22 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, fo
             <section>
                 <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 부안에서는</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
                 <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    {buanNews.map((news, index) => (
-                        <div key={index} className="flex-shrink-0 w-4/5 md:w-3/5 rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col">
-                            <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}} />
-                            <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
-                            <div className="grid grid-cols-2 gap-px bg-gray-200">
-                                <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-                                <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
+                    {buanNews.map((news) => {
+                        const isLiked = likedNews.includes(news.id);
+                        return (
+                            <div key={news.id} className="flex-shrink-0 w-4/5 md:w-3/5 rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
+                                <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}} />
+                                <button onClick={() => handleLikeNews(news)} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
+                                    <Heart size={20} className={isLiked ? "text-red-500 fill-current" : "text-gray-500"} />
+                                </button>
+                                <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
+                                <div className="grid grid-cols-2 gap-px bg-gray-200">
+                                    <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
+                                    <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             </section>
             <section>
@@ -257,7 +268,7 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, userEvents, fo
     );
 };
 
-const NewsPage = ({ buanNews, currentUser }) => {
+const NewsPage = ({ buanNews, currentUser, handleLikeNews, likedNews }) => {
     const [activeTag, setActiveTag] = useState('전체');
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -295,18 +306,24 @@ const NewsPage = ({ buanNews, currentUser }) => {
                 <Modal isOpen={applyModalOpen} onClose={() => setApplyModalOpen(false)}>
                     {selectedNews && <ApplyForm news={selectedNews} onSubmit={handleApplySubmit} />}
                 </Modal>
-                {filteredNews.map((news, index) => (
-                    <div key={index} className="w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col">
-                        <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}}/>
-                        <div className="p-3 bg-white flex-grow">
-                            <h3 className="font-bold truncate">{news.title}</h3>
+                {filteredNews.map((news) => {
+                    const isLiked = likedNews.includes(news.id);
+                    return (
+                        <div key={news.id} className="w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
+                            <img src={news.imageUrl} alt={news.title} className="w-full h-auto object-cover" onError={(e) => {e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image'}} />
+                             <button onClick={() => handleLikeNews(news)} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
+                                <Heart size={20} className={isLiked ? "text-red-500 fill-current" : "text-gray-500"} />
+                            </button>
+                            <div className="p-3 bg-white flex-grow">
+                                <h3 className="font-bold truncate">{news.title}</h3>
+                            </div>
+                            <div className="grid grid-cols-2 gap-px bg-gray-200">
+                                <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
+                                <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-px bg-gray-200">
-                            <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-                            <button onClick={() => openApplyModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">신청하기</button>
-                        </div>
-                    </div>
-                ))}
+                    )
+                })}
             </div>
         </div>
     );
@@ -328,7 +345,7 @@ const CalendarPage = ({ userEvents, currentUser, pageParam }) => {
     const handleAddEvent = async () => {
         if (!eventTitle.trim()) { alert("일정 제목을 입력해주세요."); return; }
         try {
-            await addDoc(collection(db, 'users', currentUser.uid, 'events'), { title: eventTitle, date: selectedDate, createdAt: Timestamp.now() });
+            await addDoc(collection(db, 'users', currentUser.uid, 'events'), { title: eventTitle, date: selectedDate, createdAt: Timestamp.now(), type: 'user' });
             setIsModalOpen(false); setEventTitle('');
         } catch(error) { console.error("Error adding event: ", error); alert("일정 추가 중 오류가 발생했습니다."); }
     };
@@ -397,7 +414,7 @@ const ApplyForm = ({ news, onSubmit }) => {
 
 const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
     const [filter, setFilter] = useState('전체');
-    const categories = ['전체', '일상', '맛집', '정보', '질문', '사건사고'];
+    const categories = ['전체', '일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
     const filteredPosts = filter === '전체' ? posts : posts.filter(p => p.category === filter);
     const timeSince = (date) => {
         if (!date) return '';
@@ -465,7 +482,7 @@ const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
 
 const WritePage = ({ setCurrentPage, currentUser }) => {
     const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [category, setCategory] = useState('일상');
-    const categories = ['일상', '맛집', '정보', '질문', '사건사고'];
+    const categories = ['일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
     const handleSubmit = async () => {
         if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
         try {
@@ -538,7 +555,7 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
         catch(e) { console.error("Error updating bookmark:", e); }
     };
     const handleCommentSubmit = async (e) => {
-        if (e) e.preventDefault();
+        e.preventDefault();
         if (!newComment.trim() || !currentUser) return;
         try {
             await addDoc(collection(db, `posts/${postId}/comments`), { text: newComment.trim(), authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(), likes: [] });
@@ -630,7 +647,6 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
     );
 };
 
-// 사용자 프로필 페이지
 const UserProfilePage = ({ userId, setCurrentPage, currentUser }) => {
     const [profileUser, setProfileUser] = useState(null);
     const [userPosts, setUserPosts] = useState([]);
@@ -898,6 +914,7 @@ export default function App() {
     const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
     const [chats, setChats] = useState([]);
+    const [likedNews, setLikedNews] = useState([]);
 
     const buanNews = [
         { title: "취업! 치얼업!", imageUrl: "https://lh3.googleusercontent.com/d/1a-5NaQ3U_K4PJS3vXI83uzRl-83a3Eea", tags: ['청년'], content: `부안군 로컬JOB센터, 구인구직 만남의 날!\n✨ 취업! 치얼업! ✨\n일자리를 찾고 있다면,\n이 기회를 놓치지 마세요!\n\n📍 일시: 2025년 6월 25일(수) 14:00\n📍 장소: 부안군어울림센터 1층\n*부안읍 부풍로 9-30\n\n🤝현장에서 면접까지!\n🎁면접만 봐도 현장면접비 5만원 지급!\n\n📞 사전 접수 필수!\n참여를 원하시는 분은 꼭 전화로 접수해주세요!\n063)584-8032~3`},
