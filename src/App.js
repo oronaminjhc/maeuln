@@ -21,7 +21,11 @@ import {
     where,
     orderBy,
     limit,
-    deleteDoc
+    deleteDoc,
+    arrayRemove,
+    arrayUnion,
+    increment,
+    getDocs
 } from 'firebase/firestore';
 import {
     getStorage,
@@ -148,9 +152,8 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
     );
 };
 
-
 // =================================================================
-// ▼▼▼ 페이지 컴포넌트들 (모두 포함) ▼▼▼
+// ▼▼▼ 페이지 컴포넌트들 ▼▼▼
 // =================================================================
 
 const AuthPage = () => {
@@ -262,7 +265,6 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNe
         </div>
     );
 };
-
 
 const NewsPage = ({ buanNews, currentUser, setCurrentPage, handleDeleteNews }) => {
     const isAdmin = currentUser.uid === ADMIN_UID;
@@ -602,8 +604,6 @@ export default function App() {
 
     // Firestore 데이터 리스너
     useEffect(() => {
-        if (!currentUser) return;
-
         const unsubNews = onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), (snapshot) => {
             setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
@@ -612,17 +612,8 @@ export default function App() {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         
-        let unsubFollowing = () => {};
-        if (currentUser.following && currentUser.following.length > 0) {
-           unsubFollowing = onSnapshot(query(collection(db, "posts"), where('authorId', 'in', currentUser.following), orderBy("createdAt", "desc"), limit(20)), (snapshot) => {
-               setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-           });
-        } else {
-            setFollowingPosts([]);
-        }
-        
-        return () => { unsubNews(); unsubPosts(); unsubFollowing(); };
-    }, [currentUser]);
+        return () => { unsubNews(); unsubPosts(); };
+    }, []);
 
     const handleDeleteNews = async (newsId, imagePath) => {
         if(!currentUser || currentUser.uid !== ADMIN_UID) return;
