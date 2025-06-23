@@ -28,7 +28,14 @@ import {
     deleteDoc,
     getDocs
 } from 'firebase/firestore';
-import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare } from 'lucide-react';
+import { 
+    getStorage, 
+    ref, 
+    uploadBytes, 
+    getDownloadURL, 
+    deleteObject 
+} from 'firebase/storage';
+import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp } from 'lucide-react';
 
 // --- 로고 컴포넌트 ---
 const Logo = ({ size = 28 }) => {
@@ -57,6 +64,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app); // Storage 초기화
 
 // --- 새로운 카테고리 스타일 ---
 const categoryStyles = {
@@ -480,27 +488,99 @@ const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
     );
 };
 
-const WritePage = ({ setCurrentPage, currentUser }) => {
-    const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [category, setCategory] = useState('일상');
+const WritePage = ({ setCurrentPage, currentUser, postToEdit }) => {
+    const [title, setTitle] = useState(postToEdit?.title || '');
+    const [content, setContent] = useState(postToEdit?.content || '');
+    const [category, setCategory] = useState(postToEdit?.category || '일상');
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState(postToEdit?.imageUrl || null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const categories = ['일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
-    const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
-        try {
-            await addDoc(collection(db, 'posts'), {
-                title, content, category, authorId: currentUser.uid, authorName: currentUser.displayName,
-                createdAt: Timestamp.now(), likes: [], bookmarks: [], commentCount: 0,
-            });
-            setCurrentPage('board');
-        } catch (error) {
-            console.error("Error adding document: ", error); alert('글을 등록하는 중 오류가 발생했습니다.');
+    
+    const handleImageChange = (e) => {
+        if (e.target.files[0]) {
+            const file = e.target.files[0];
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
         }
     };
+
+    const handleSubmit = async () => {
+        if (!title.trim() || !content.trim()) {
+            alert('제목과 내용을 모두 입력해주세요.');
+            return;
+        }
+        if(isSubmitting) return;
+        setIsSubmitting(true);
+
+        try {
+            let imageUrl = postToEdit?.imageUrl || null;
+            let imagePath = postToEdit?.imagePath || null;
+
+            // 1. 새 이미지가 선택된 경우
+            if (imageFile) {
+                // 1a. 수정 모드일 때 기존 이미지가 있었다면 Storage에서 삭제
+                if(postToEdit?.imagePath) {
+                    const oldImageRef = ref(storage, postToEdit.imagePath);
+                    await deleteObject(oldImageRef).catch(err => console.error("기존 이미지 삭제 실패:", err));
+                }
+                // 1b. 새 이미지 업로드
+                const newImagePath = `posts/<span class="math-inline">\{currentUser\.uid\}/</span>{Date.now()}_${imageFile.name}`;
+                const storageRef = ref(storage, newImagePath);
+                await uploadBytes(storageRef, imageFile);
+                imageUrl = await getDownloadURL(storageRef);
+                imagePath = newImagePath;
+            }
+
+            const postData = {
+                title,
+                content,
+                category,
+                imageUrl, // 이미지 URL 추가
+                imagePath, // 이미지 경로 추가 (삭제 시 사용)
+                updatedAt: Timestamp.now(),
+            };
+
+            if(postToEdit) { // 2. 수정 모드
+                const postRef = doc(db, 'posts', postToEdit.id);
+                await updateDoc(postRef, postData);
+                setCurrentPage('postDetail', postToEdit.id);
+            } else { // 3. 새 글 작성 모드
+                 await addDoc(collection(db, 'posts'), {
+                    ...postData,
+                    authorId: currentUser.uid,
+                    authorName: currentUser.displayName,
+                    createdAt: Timestamp.now(),
+                    likes: [],
+                    bookmarks: [],
+                    commentCount: 0,
+                });
+                setCurrentPage('board');
+            }
+        } catch (error) {
+            console.error("글 처리 중 오류: ", error);
+            alert('글을 처리하는 중 오류가 발생했습니다.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const pageTitle = postToEdit ? "글 수정" : "글쓰기";
+    const goBackAction = () => {
+        if (postToEdit) {
+            setCurrentPage('postDetail', postToEdit.id);
+        } else {
+            setCurrentPage('board');
+        }
+    };
+
     return (
         <div>
             <div className="p-4 flex items-center border-b">
-                <button onClick={() => setCurrentPage('board')} className="p-2 -ml-2"> <ArrowLeft /> </button>
-                <h2 className="text-lg font-bold mx-auto">글쓰기</h2>
-                 <button onClick={handleSubmit} className="text-lg font-bold text-[#00462A]">완료</button>
+                <button onClick={goBackAction} className="p-2 -ml-2"> <ArrowLeft /> </button>
+                <h2 className="text-lg font-bold mx-auto">{pageTitle}</h2>
+                 <button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">{isSubmitting ? '등록중...' : '완료'}</button>
             </div>
             <div className="p-4 space-y-4">
                 <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -518,13 +598,32 @@ const WritePage = ({ setCurrentPage, currentUser }) => {
                     className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..."
                     className="w-full h-64 p-2 focus:outline-none resize-none" />
+                
+                <div className="border-t pt-4">
+                    <label htmlFor="image-upload" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]">
+                        <ImageUp size={20} />
+                        <span>사진 추가</span>
+                    </label>
+                    <input id="image-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    {imagePreview && (
+                        <div className="mt-4 relative w-32 h-32">
+                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+                            <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
 
 const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
-    const [post, setPost] = useState(null); const [comments, setComments] = useState([]); const [newComment, setNewComment] = useState(''); const [loading, setLoading] = useState(true);
+    const [post, setPost] = useState(null); 
+    const [comments, setComments] = useState([]); 
+    const [newComment, setNewComment] = useState(''); 
+    const [loading, setLoading] = useState(true);
     
     useEffect(() => {
         if (!postId) {
@@ -533,17 +632,43 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
         }
         const postRef = doc(db, `posts`, postId);
         const unsubscribePost = onSnapshot(postRef, (doc) => {
-            if (doc.exists()) { setPost({ id: doc.id, ...doc.data() }); } else { alert("삭제된 게시글입니다."); goBack(); }
+            if (doc.exists()) { 
+                setPost({ id: doc.id, ...doc.data() }); 
+            } else { 
+                alert("삭제된 게시글입니다."); 
+                goBack(); 
+            }
             setLoading(false);
         });
-        const commentsRef = collection(db, `posts/${postId}/comments`); const q = query(commentsRef);
+        const commentsRef = collection(db, `posts/${postId}/comments`); 
+        const q = query(commentsRef, orderBy("createdAt", "asc"));
         const unsubscribeComments = onSnapshot(q, (snapshot) => {
             const commentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            commentsData.sort((a,b) => a.createdAt.toMillis() - b.createdAt.toMillis()); setComments(commentsData);
+            setComments(commentsData);
         });
         return () => { unsubscribePost(); unsubscribeComments(); };
     }, [postId, goBack]);
     
+    const handleDelete = async () => {
+        if (!post || post.authorId !== currentUser.uid) return;
+        if (window.confirm("정말로 이 게시글을 삭제하시겠습니까?")) {
+            try {
+                // 이미지가 있는 경우 Storage에서 삭제
+                if (post.imagePath) {
+                    const imageRef = ref(storage, post.imagePath);
+                    await deleteObject(imageRef);
+                }
+                // Firestore 문서 삭제
+                await deleteDoc(doc(db, 'posts', postId));
+                alert("게시글이 삭제되었습니다.");
+                goBack();
+            } catch (error) {
+                console.error("Error deleting post: ", error);
+                alert("삭제 중 오류가 발생했습니다.");
+            }
+        }
+    };
+
     const handleLike = async () => {
         if (!post || !currentUser) return; const liked = post.likes?.includes(currentUser.uid);
         try { await updateDoc(doc(db, 'posts', postId), { likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) }); }
@@ -579,6 +704,7 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
     if (loading) return <LoadingSpinner />; if (!post) return null;
     const isLiked = post.likes?.includes(currentUser.uid); const isBookmarked = post.bookmarks?.includes(currentUser.uid);
     const style = getCategoryStyle(post.category);
+    const isAuthor = post.authorId === currentUser.uid;
     
     return (
         <div className="pb-20">
@@ -587,9 +713,21 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
                     <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md mb-2 inline-block`}>{post.category}</span>
                     <div className="flex justify-between items-start mt-2">
                         <h1 className="text-2xl font-bold flex-1 pr-4">{post.title}</h1>
-                        <button onClick={handleBookmark} className="p-1 -mr-1">
-                            <Star size={22} className={isBookmarked ? "text-yellow-400 fill-current" : "text-gray-400"} />
-                        </button>
+                        <div className="flex items-center">
+                            <button onClick={handleBookmark} className="p-1">
+                                <Star size={22} className={isBookmarked ? "text-yellow-400 fill-current" : "text-gray-400"} />
+                            </button>
+                            {isAuthor && (
+                                <div className="flex ml-2">
+                                    <button onClick={() => setCurrentPage('editPost', post)} className="p-1 text-gray-500 hover:text-blue-500">
+                                        <Pencil size={20} />
+                                    </button>
+                                    <button onClick={handleDelete} className="p-1 text-gray-500 hover:text-red-500">
+                                        <Trash2 size={20} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <div className="flex items-center text-sm text-gray-500 mt-4">
                         <div className="w-8 h-8 rounded-full bg-gray-200 mr-2"></div>
@@ -597,6 +735,11 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
                         <span className="mx-2">·</span>
                         <span>{timeSince(post.createdAt)}</span>
                     </div>
+                    {post.imageUrl && (
+                        <div className="my-4">
+                            <img src={post.imageUrl} alt="Post image" className="w-full h-auto rounded-lg object-cover" />
+                        </div>
+                    )}
                     <p className="text-gray-800 leading-relaxed whitespace-pre-wrap mt-4">{post.content}</p>
                 </div>
                 <div className="flex items-center gap-4 mb-4">
@@ -922,7 +1065,6 @@ export default function App() {
         { id: 'news-3', date: '2025-06-19', title: "7월 행복UP클래스 참여자 모집", imageUrl: "https://lh3.googleusercontent.com/d/14ovfCnTDi-4bmb8MeIX4OT6KzykZcd7M", tags: ['문화'], content: `🌟7월, 행복UP클래스 참여자 모집! 🌟\n✅모집대상\n부안 청년 누구나 (1979~2006년생)\n\n✅신청기간\n6. 19.(목) 오전 9시 ~ 6. 21.(토) 오후 6시\n※ 인기 클래스는 조기 마감될 수 있어요!\n\n✅신청하기 : https://naver.me/GuDn0War\n\n✅ 선정 안내\n📲 6월 24일(화) 문자 개별 발송\n📞 참여 의사 유선 확인: 6월 26일(금) 18시까지!\n※ 미확인 시 자동 취소\n\n✅ 최종 확정\n📬 6월 27일(토) 개별 통보\n🚫 당일취소❌ 노쇼❌ = 다음달 참여 제한!\n\n📝 신청 & 문의 : 부안청년UP센터\n☎ 063-584-2662,3\n(운영시간: 화•금 13:00~21:00 / 토 9:00~18:00)`}
     ];
 
-   // --- 무한 로딩 해결을 위한 useEffect 로직 수정 ---
    useEffect(() => {
         let userDocUnsubscribe = null;
         const authUnsubscribe = onAuthStateChanged(auth, (user) => {
@@ -995,7 +1137,7 @@ export default function App() {
         }
 
         return () => unsubscribes.forEach(unsub => unsub());
-    }, [currentUser?.uid]); 
+    }, [currentUser?.uid, currentUser?.following]); 
 
     const handleLikeNews = async (newsItem) => {
         if (!currentUser) return;
@@ -1029,7 +1171,9 @@ export default function App() {
 
     const setCurrentPage = (pageName, param = null) => {
         setPage(pageName); setPageParam(param);
-        setPageHistory(prev => [...prev, {page: pageName, param: param}]);
+        if (pageName !== 'editPost') { // Prevent edit page from being a back-able destination from post detail
+             setPageHistory(prev => [...prev, {page: pageName, param: param}]);
+        }
     };
     
     const goBack = useCallback(() => {
@@ -1050,8 +1194,12 @@ export default function App() {
     
     const renderHeader = () => {
         const mainPages = ['home'];
-        const isSubPage = !mainPages.includes(page) && pageHistory.length > 1;
+        const isSubPage = !mainPages.includes(page) && pageHistory.length > 1 && !['write', 'editPost'].includes(page);
         const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'calendar': '달력', 'search': '검색', 'notifications': '알림', 'chatList': '채팅', 'chatPage': pageParam?.recipientName || '채팅' };
+        
+        const hideHeader = ['write', 'editPost', 'postDetail'].includes(page);
+        if(hideHeader) return null; // 글쓰기, 수정, 상세 페이지에서는 커스텀 헤더를 사용하므로 렌더링 안함
+
         const title = titleMap[page] || "마을엔 부안";
         
         return (
@@ -1074,6 +1222,7 @@ export default function App() {
             case 'calendar': return <CalendarPage userEvents={userEvents} currentUser={currentUser} pageParam={pageParam} />;
             case 'board': return <BoardPage posts={posts} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'write': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} />;
+            case 'editPost': return <WritePage setCurrentPage={setCurrentPage} currentUser={currentUser} postToEdit={pageParam} />;
             case 'postDetail': return <PostDetailPage postId={pageParam} setCurrentPage={setCurrentPage} goBack={goBack} currentUser={currentUser} />;
             case 'userProfile': return <UserProfilePage userId={pageParam} setCurrentPage={setCurrentPage} currentUser={currentUser} />;
             case 'search': return <SearchPage posts={posts} setCurrentPage={setCurrentPage} />;
@@ -1083,12 +1232,17 @@ export default function App() {
             default: return <HomePage setCurrentPage={setCurrentPage} posts={posts} buanNews={buanNews} currentUser={currentUser} userEvents={userEvents} followingPosts={followingPosts} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
         }
     };
+    
+    const showHeader = !['write', 'editPost', 'postDetail'].includes(page);
+    const showNav = !['write', 'postDetail', 'chatPage', 'editPost'].includes(page);
 
     return (
         <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
-            {renderHeader()}
-            <main className="pb-24 bg-white"> {renderPage()} </main>
-            {!['write', 'postDetail', 'chatPage'].includes(page) && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
+            {showHeader && renderHeader()}
+            <main className="bg-white" style={{paddingBottom: showNav ? '6rem' : '0'}}>
+                {renderPage()}
+            </main>
+            {showNav && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
         </div>
     );
 }
