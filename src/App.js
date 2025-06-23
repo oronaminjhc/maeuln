@@ -16,16 +16,17 @@ import {
     onSnapshot,
     doc,
     setDoc,
+    getDoc,
     updateDoc,
+    increment,
+    arrayUnion,
+    arrayRemove,
     Timestamp,
     where,
     orderBy,
     limit,
     deleteDoc,
-    getDocs,
-    arrayUnion,
-    arrayRemove,
-    increment
+    getDocs
 } from 'firebase/firestore';
 import {
     getStorage,
@@ -36,11 +37,20 @@ import {
 } from 'firebase/storage';
 import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp } from 'lucide-react';
 
+
 // ★ 관리자 UID 지정
 const ADMIN_UID = 'wvXNcSqXMsaiqOCgBvU7A4pJoFv1';
 
 // --- 로고 컴포넌트 ---
-const Logo = ({ size = 28 }) => ( <img src="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" alt="Logo" width={size} height={size} style={{ objectFit: 'contain' }} /> );
+const Logo = ({ size = 28 }) => (
+    <img
+        src="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn"
+        alt="Logo"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
 
 // --- Firebase 설정 ---
 const firebaseConfig = {
@@ -52,20 +62,35 @@ const firebaseConfig = {
     appId: "1:463888320744:web:0f773fed3428d36895a15d",
     measurementId: "G-WNRFBZX0HE"
 };
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
 // --- 기타 헬퍼 ---
-const categoryStyles = { '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' }, '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' }, '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' }, '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' }, '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' }, '부안맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' }, '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' }, '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' } };
+const categoryStyles = {
+    '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
+    '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' },
+    '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' },
+    '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' },
+    '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' },
+    '부안맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
+    '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
+    '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
+};
 const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
 const timeSince = (date) => {
-    if (!date) return ''; const seconds = Math.floor((new Date() - date.toDate()) / 1000);
-    if (seconds < 60) return `방금 전`; const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}분 전`; const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}시간 전`; const days = Math.floor(hours / 24);
-    return `${days}일 전`;
+    if (!date) return '';
+    const seconds = Math.floor((new Date() - date.toDate()) / 1000);
+    if (seconds < 60) return `방금 전`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}분 전`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}시간 전`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}일 전`;
+    return date.toLocaleDateString('ko-KR');
 };
 
 // --- 공용 컴포넌트 ---
@@ -75,7 +100,8 @@ const Modal = ({ isOpen, onClose, children }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
-                    <div className="w-6"></div> <h3 className="text-lg font-bold text-center"> </h3>
+                    <div className="w-6"></div>
+                    <h3 className="text-lg font-bold text-center"> </h3>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
                 </div>
                 <div className="p-6">{children}</div>
@@ -83,8 +109,9 @@ const Modal = ({ isOpen, onClose, children }) => {
         </div>
     );
 };
+
 const LoadingSpinner = () => (
-    <div className="flex justify-center items-center h-screen">
+    <div className="flex justify-center items-center h-full pt-20">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#00462A]"></div>
     </div>
 );
@@ -93,7 +120,7 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
     return (
         <div className="flex-shrink-0 w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
             {news.imageUrl && <img src={news.imageUrl} alt={news.title} className="w-full h-48 object-cover" onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image' }} />}
-            
+
             {isAdmin && (
                 <div className="absolute top-2 left-2 flex gap-2 z-10">
                     <button onClick={() => setCurrentPage('editNews', news)} className="bg-white/70 p-1.5 rounded-full text-blue-600 shadow"><Pencil size={20} /></button>
@@ -154,9 +181,8 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
 };
 
 // =================================================================
-// ▼▼▼ 페이지 컴포넌트들 (모두 포함) ▼▼▼
+// ▼▼▼ 페이지 컴포넌트들 ▼▼▼
 // =================================================================
-
 const AuthPage = () => {
     const [isLoginMode, setIsLoginMode] = useState(true);
     const [email, setEmail] = useState('');
@@ -166,7 +192,9 @@ const AuthPage = () => {
     const [loading, setLoading] = useState(false);
 
     const handleAuthAction = async (e) => {
-        e.preventDefault(); setLoading(true); setError('');
+        e.preventDefault();
+        setLoading(true);
+        setError('');
         try {
             if (isLoginMode) {
                 await signInWithEmailAndPassword(auth, email, password);
@@ -181,20 +209,26 @@ const AuthPage = () => {
                 });
             }
         } catch (err) {
+            console.error("Auth Error:", err);
             switch (err.code) {
+                case 'auth/operation-not-allowed': setError("Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화해주세요."); break;
                 case 'auth/email-already-in-use': setError('이미 사용 중인 이메일입니다.'); break;
-                case 'auth/invalid-credential': setError('이메일 또는 비밀번호가 잘못되었습니다.'); break;
+                case 'auth/invalid-credential': case 'auth/wrong-password': case 'auth/user-not-found': setError('이메일 또는 비밀번호가 잘못되었습니다.'); break;
                 default:
-                    if (err.message.includes('닉네임')) setError(err.message);
-                    else setError('오류가 발생했습니다. 잠시 후 다시 시도해주세요.'); break;
+                    if (err.message === '닉네임은 2자 이상 입력해주세요.') setError(err.message);
+                    else setError('오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                    break;
             }
-        } finally { setLoading(false); }
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4">
             <div className="text-center mb-8 flex flex-col items-center">
-                <Logo size={80} /> <h1 className="text-3xl font-bold text-gray-800 mt-4">마을엔 부안</h1>
+                <Logo size={80} />
+                <h1 className="text-3xl font-bold text-gray-800 mt-4">마을엔 부안</h1>
                 <p className="text-gray-600 mt-2 text-center">지금 우리 마을에서 무슨 일이?<br/>'마을엔'에서 확인하세요!</p>
             </div>
             <div className="w-full max-w-xs">
@@ -205,7 +239,7 @@ const AuthPage = () => {
                     {error && <p className="text-red-500 text-sm text-center">{error}</p>}
                     <button type="submit" disabled={loading} className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400">{loading ? '처리 중...' : (isLoginMode ? '로그인' : '회원가입')}</button>
                 </form>
-                <button onClick={() => { setIsLoginMode(!isLoginMode); setError(''); }} className="w-full mt-4 text-sm text-gray-600 hover:text-[#00462A]">{isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}</button>
+                <button onClick={() => setIsLoginMode(!isLoginMode)} className="w-full mt-4 text-sm text-gray-600 hover:text-[#00462A]">{isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}</button>
             </div>
         </div>
     );
@@ -221,44 +255,95 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNe
 
     return (
         <div className="p-4 space-y-8">
-            <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>{selectedNews && ( <div><h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2><p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p></div> )}</Modal>
-
+            <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
+                {selectedNews && (
+                    <div>
+                        <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2>
+                        <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p>
+                    </div>
+                )}
+            </Modal>
+            
             <section>
-                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 부안에서는</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">지금 부안에서는</h2>
+                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
+                </div>
                 <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    {buanNews.map((news) => (
-                        <div key={news.id} className="w-4/5 md:w-3/5">
-                            <NewsCard {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
-                        </div>
-                    ))}
-                     {buanNews.length === 0 && <div className="text-center text-gray-500 w-full p-8 bg-gray-100 rounded-lg">아직 등록된 소식이 없습니다.</div>}
+                    {buanNews.length > 0 ? (
+                        buanNews.map((news) => (
+                            <div key={news.id} className="w-4/5 md:w-3/5 flex-shrink-0">
+                                <NewsCard {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
+                            </div>
+                        ))
+                    ) : (
+                         <div className="text-center text-gray-500 w-full p-8 bg-gray-100 rounded-lg">아직 등록된 소식이 없습니다.</div>
+                    )}
                 </div>
             </section>
-            
+
             <section>
-                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">부안 달력</h2><a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a></div>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">부안 달력</h2>
+                    <a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a>
+                </div>
                 <Calendar events={userEvents} onDateClick={(date) => setCurrentPage('calendar', { date })}/>
             </section>
-            
+
             <section>
-                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 인기있는 글</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">지금 인기있는 글</h2>
+                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
+                </div>
                 <div className="space-y-3">
-                    {popularPosts.length > 0 ? (popularPosts.map(post => { const style = getCategoryStyle(post.category);
-                        return (<div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><p className="truncate flex-1">{post.title}</p><div className="flex items-center text-xs text-gray-400 gap-2"><Heart size={14} className="text-red-400"/><span>{post.likes?.length || 0}</span></div></div>);
+                    {popularPosts.length > 0 ? (popularPosts.map(post => {
+                        const style = getCategoryStyle(post.category);
+                        return (
+                            <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
+                                <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
+                                <p className="truncate flex-1">{post.title}</p>
+                                <div className="flex items-center text-xs text-gray-400 gap-2">
+                                    <Heart size={14} className="text-red-400"/>
+                                    <span>{post.likes?.length || 0}</span>
+                                </div>
+                            </div>
+                        );
                     })) : (<p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>)}
                 </div>
             </section>
 
             <section>
-                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">팔로잉</h2></div>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">팔로잉</h2>
+                </div>
                 <div className="space-y-3">
-                    {followingPosts.length > 0 ? (followingPosts.map(post => { const style = getCategoryStyle(post.category);
+                    {followingPosts.length > 0 ? (followingPosts.map(post => {
+                        const style = getCategoryStyle(post.category);
                         return (
-                        <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
-                            <div className="flex items-center gap-2 mb-2"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><h3 className="font-bold text-md truncate flex-1">{post.title}</h3></div>
-                            <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
-                            <div className="flex justify-between items-center text-xs text-gray-500"><div><span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span><span className="mx-1">·</span><span>{timeSince(post.createdAt)}</span></div><div className="flex items-center gap-3"><div className="flex items-center gap-1"><Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} /><span>{post.likes?.length || 0}</span></div><div className="flex items-center gap-1"><MessageCircle size={14} className="text-gray-400"/><span>{post.commentCount || 0}</span></div></div></div>
-                        </div>
+                            <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
+                                    <h3 className="font-bold text-md truncate flex-1">{post.title}</h3>
+                                </div>
+                                <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
+                                <div className="flex justify-between items-center text-xs text-gray-500">
+                                    <div>
+                                        <span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
+                                        <span className="mx-1">·</span>
+                                        <span>{timeSince(post.createdAt)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-1">
+                                            <Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} />
+                                            <span>{post.likes?.length || 0}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <MessageCircle size={14} className="text-gray-400"/>
+                                            <span>{post.commentCount || 0}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         );
                     })) : (<p className="text-center text-gray-500 py-4">팔로우하는 사용자의 글이 없습니다.</p>)}
                 </div>
@@ -277,15 +362,24 @@ const NewsPage = ({ buanNews, currentUser, setCurrentPage, handleDeleteNews, han
     return (
         <div className="p-4">
             {isAdmin && (
-                 <button onClick={() => setCurrentPage('writeNews')} className="w-full mb-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg flex items-center justify-center gap-2">
+                <button onClick={() => setCurrentPage('writeNews')} className="w-full mb-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg flex items-center justify-center gap-2">
                     <PlusCircle size={20} /> 소식 글쓰기
                 </button>
             )}
 
-            <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>{selectedNews && (<div><h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2><p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p></div>)}</Modal>
+            <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
+                {selectedNews && (
+                    <div>
+                        <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2>
+                        <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p>
+                    </div>
+                )}
+            </Modal>
 
             <div className="space-y-4">
-                {buanNews.map((news) => ( <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} /> ))}
+                {buanNews.map((news) => (
+                    <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
+                ))}
                 {buanNews.length === 0 && <div className="text-center text-gray-500 py-10 p-8 bg-gray-100 rounded-lg">등록된 소식이 없습니다.</div>}
             </div>
         </div>
@@ -297,16 +391,24 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
     const [content, setContent] = useState(itemToEdit?.content || '');
     const [tags, setTags] = useState(itemToEdit?.tags?.join(', ') || '');
     const [applyUrl, setApplyUrl] = useState(itemToEdit?.applyUrl || '');
+    const [date, setDate] = useState(itemToEdit?.date || ''); // 날짜 상태 추가
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleImageChange = (e) => {
-        if (e.target.files[0]) { const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
+        if (e.target.files[0]) {
+            const file = e.target.files[0];
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
     };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
+        if (!title.trim() || !content.trim() || !date) {
+            alert('날짜, 제목, 내용을 모두 입력해주세요.');
+            return;
+        }
         if (isSubmitting) return;
         setIsSubmitting(true);
 
@@ -315,7 +417,9 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
             let imagePath = itemToEdit?.imagePath || null;
 
             if (imageFile) {
-                if (itemToEdit?.imagePath) { await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err)); }
+                if (itemToEdit?.imagePath) {
+                    await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err));
+                }
                 const newImagePath = `news_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
                 await uploadBytes(storageRef, imageFile);
@@ -323,7 +427,16 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
                 imagePath = newImagePath;
             }
 
-            const finalData = { title, content, imageUrl, imagePath, updatedAt: Timestamp.now(), tags: tags.split(',').map(t => t.trim()).filter(Boolean), applyUrl };
+            const finalData = {
+                title,
+                content,
+                imageUrl,
+                imagePath,
+                date, // 날짜 데이터 추가
+                updatedAt: Timestamp.now(),
+                tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+                applyUrl
+            };
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'news', itemToEdit.id), finalData);
@@ -339,7 +452,7 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
             setIsSubmitting(false);
         }
     };
-    
+
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
 
     return (
@@ -352,6 +465,7 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
                 </button>
             </div>
             <div className="p-4 space-y-4">
+                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} placeholder="이벤트 날짜" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" required />
                 <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="url" value={applyUrl} onChange={(e) => setApplyUrl(e.target.value)} placeholder="신청하기 URL 링크 (선택 사항)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
@@ -359,9 +473,146 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
                 <div className="border-t pt-4">
                     <label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
                     <input id="image-upload-news" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                    {imagePreview && ( <div className="mt-4 relative w-32 h-32"> <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" /> <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button> </div> )}
+                    {imagePreview && (
+                        <div className="mt-4 relative w-32 h-32">
+                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+                            <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button>
+                        </div>
+                    )}
                 </div>
             </div>
+        </div>
+    );
+};
+
+const CalendarPage = ({ userEvents, currentUser, pageParam }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [eventTitle, setEventTitle] = useState('');
+
+    useEffect(() => {
+        if(pageParam?.date) {
+            setSelectedDate(pageParam.date);
+            setIsModalOpen(true);
+        }
+    }, [pageParam]);
+
+    const handleDateClick = (date) => {
+        setSelectedDate(date);
+        setIsModalOpen(true);
+    };
+
+    const handleAddEvent = async () => {
+        if (!eventTitle.trim()) {
+            alert("일정 제목을 입력해주세요.");
+            return;
+        }
+        try {
+            await addDoc(collection(db, 'users', currentUser.uid, 'events'), {
+                title: eventTitle,
+                date: selectedDate,
+                createdAt: Timestamp.now(),
+                type: 'user'
+            });
+            setIsModalOpen(false);
+            setEventTitle('');
+        } catch(error) {
+            console.error("Error adding event: ", error);
+            alert("일정 추가 중 오류가 발생했습니다.");
+        }
+    };
+    
+    const eventsForSelectedDate = selectedDate && userEvents[selectedDate] ? userEvents[selectedDate] : [];
+
+    return (
+        <div className="p-4">
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
+                <div className="p-2">
+                    <h3 className="text-lg font-bold mb-4">{selectedDate}</h3>
+                    <div className="mb-4">
+                        <input
+                            type="text"
+                            value={eventTitle}
+                            onChange={(e) => setEventTitle(e.target.value)}
+                            placeholder="새로운 일정"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#00462A] focus:border-[#00462A]"
+                        />
+                    </div>
+                    <button onClick={handleAddEvent} className="w-full bg-[#00462A] text-white font-bold py-2 px-4 rounded-lg hover:bg-[#003a22]">
+                        저장
+                    </button>
+                    <div className="mt-6">
+                        <h4 className="font-bold mb-2">이 날의 일정:</h4>
+                        {eventsForSelectedDate.length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                                {eventsForSelectedDate.map(event => <li key={event.id}>{event.title}</li>)}
+                            </ul>
+                        ) : (
+                            <p className="text-gray-500">등록된 일정이 없습니다.</p>
+                        )}
+                    </div>
+                </div>
+            </Modal>
+            <Calendar events={userEvents} onDateClick={handleDateClick} />
+        </div>
+    );
+};
+
+const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
+    const [filter, setFilter] = useState('전체');
+    const categories = ['전체', '일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
+    const filteredPosts = filter === '전체' ? posts : posts.filter(p => p.category === filter);
+
+    return (
+        <div className="p-4">
+            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {categories.map(cat => (
+                    <button
+                        key={cat}
+                        onClick={() => setFilter(cat)}
+                        className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${filter === cat ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}>
+                        {cat}
+                    </button>
+                ))}
+            </div>
+            <div className="space-y-3">
+                 {filteredPosts.length > 0 ? (
+                    filteredPosts.map(post => {
+                        const style = getCategoryStyle(post.category);
+                        return (
+                            <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
+                                    <h3 className="font-bold text-md truncate flex-1">{post.title}</h3>
+                                </div>
+                                <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
+                                <div className="flex justify-between items-center text-xs text-gray-500">
+                                   <div>
+                                        <span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
+                                        <span className="mx-1">·</span>
+                                        <span>{timeSince(post.createdAt)}</span>
+                                   </div>
+                                   <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-1">
+                                            <Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} />
+                                            <span>{post.likes?.length || 0}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <MessageCircle size={14} className="text-gray-400"/>
+                                            <span>{post.commentCount || 0}</span>
+                                        </div>
+                                   </div>
+                                </div>
+                            </div>
+                        );
+                    })
+                ) : ( <p className="text-center text-gray-500 py-10">해당 카테고리에 글이 없습니다.</p> )}
+            </div>
+             <button
+                onClick={() => setCurrentPage('write')}
+                className="fixed bottom-24 right-5 bg-[#00462A] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-[#003a22] transition-transform transform hover:scale-110">
+                <PlusCircle size={28} />
+            </button>
         </div>
     );
 };
@@ -378,12 +629,17 @@ const WritePage = ({ goBack, currentUser, itemToEdit }) => {
 
     const handleImageChange = (e) => {
         if (e.target.files[0]) {
-            const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file));
+            const file = e.target.files[0];
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
         }
     };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
+        if (!title.trim() || !content.trim()) {
+            alert('제목과 내용을 모두 입력해주세요.');
+            return;
+        }
         if (isSubmitting) return;
         setIsSubmitting(true);
 
@@ -392,7 +648,9 @@ const WritePage = ({ goBack, currentUser, itemToEdit }) => {
             let imagePath = itemToEdit?.imagePath || null;
 
             if (imageFile) {
-                if (itemToEdit?.imagePath) { await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err)); }
+                if (itemToEdit?.imagePath) {
+                    await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err));
+                }
                 const newImagePath = `posts/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
                 await uploadBytes(storageRef, imageFile);
@@ -400,14 +658,26 @@ const WritePage = ({ goBack, currentUser, itemToEdit }) => {
                 imagePath = newImagePath;
             }
 
-            const postData = { title, content, category, imageUrl, imagePath, updatedAt: Timestamp.now() };
+            const postData = {
+                title,
+                content,
+                category,
+                imageUrl,
+                imagePath,
+                updatedAt: Timestamp.now()
+            };
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'posts', itemToEdit.id), postData);
             } else {
                 await addDoc(collection(db, 'posts'), {
-                    ...postData, authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(),
-                    likes: [], bookmarks: [], commentCount: 0,
+                    ...postData,
+                    authorId: currentUser.uid,
+                    authorName: currentUser.displayName,
+                    createdAt: Timestamp.now(),
+                    likes: [],
+                    bookmarks: [],
+                    commentCount: 0,
                 });
             }
             goBack();
@@ -431,120 +701,459 @@ const WritePage = ({ goBack, currentUser, itemToEdit }) => {
             </div>
             <div className="p-4 space-y-4">
                 <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    {categories.map(cat => ( <button key={cat} onClick={() => setCategory(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${category === cat ? `${getCategoryStyle(cat).bgStrong} text-white` : 'bg-gray-200 text-gray-700'}`}>{cat}</button>))}
+                    {categories.map(cat => (
+                        <button key={cat} onClick={() => setCategory(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${category === cat ? `${getCategoryStyle(cat).bgStrong} text-white` : 'bg-gray-200 text-gray-700'}`}>{cat}</button>
+                    ))}
                 </div>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
                 <div className="border-t pt-4">
                     <label htmlFor="image-upload-post" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
                     <input id="image-upload-post" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                    {imagePreview && ( <div className="mt-4 relative w-32 h-32"> <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" /> <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button> </div> )}
+                    {imagePreview && (
+                        <div className="mt-4 relative w-32 h-32">
+                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+                            <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button>
+                        </div>
+                    )}
                 </div>
             </div>
-        </div>
-    );
-};
-
-const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
-    const [filter, setFilter] = useState('전체');
-    const categories = ['전체', '일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
-    const filteredPosts = filter === '전체' ? posts : posts.filter(p => p.category === filter);
-
-    return (
-        <div className="p-4">
-            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {categories.map(cat => ( <button key={cat} onClick={() => setFilter(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${filter === cat ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}>{cat}</button> ))}
-            </div>
-            <div className="space-y-3">
-                 {filteredPosts.length > 0 ? (
-                    filteredPosts.map(post => (
-                        <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className={`text-xs font-bold ${getCategoryStyle(post.category).text} ${getCategoryStyle(post.category).bg} px-2 py-1 rounded-md`}>{post.category}</span>
-                                <h3 className="font-bold text-md truncate flex-1">{post.title}</h3>
-                            </div>
-                            <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
-                            <div className="flex justify-between items-center text-xs text-gray-500">
-                               <div>
-                                    <span className="font-semibold">{post.authorName}</span>
-                                    <span className="mx-1">·</span>
-                                    <span>{timeSince(post.createdAt)}</span>
-                               </div>
-                               <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-1"><Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} /><span>{post.likes?.length || 0}</span></div>
-                                    <div className="flex items-center gap-1"><MessageCircle size={14} className="text-gray-400"/><span>{post.commentCount || 0}</span></div>
-                               </div>
-                            </div>
-                        </div>
-                    ))
-                ) : ( <p className="text-center text-gray-500 py-10">해당 카테고리에 글이 없습니다.</p> )}
-            </div>
-             <button onClick={() => setCurrentPage('write')} className="fixed bottom-24 right-5 bg-[#00462A] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-[#003a22] transition-transform transform hover:scale-110">
-                <PlusCircle size={28} />
-            </button>
         </div>
     );
 };
 
 const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
     const [post, setPost] = useState(null);
+    const [comments, setComments] = useState([]);
+    const [newComment, setNewComment] = useState('');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!postId) { goBack(); return; }
-        const postRef = doc(db, 'posts', postId);
+        if (!postId) {
+            goBack();
+            return;
+        }
+        const postRef = doc(db, `posts`, postId);
         const unsubscribePost = onSnapshot(postRef, (doc) => {
-            if (doc.exists()) { setPost({ id: doc.id, ...doc.data() }); }
-            else { alert("삭제된 게시글입니다."); goBack(); }
+            if (doc.exists()) {
+                setPost({ id: doc.id, ...doc.data() });
+            } else {
+                alert("삭제된 게시글입니다.");
+                goBack();
+            }
             setLoading(false);
         });
-        return () => unsubscribePost();
+
+        const commentsRef = collection(db, `posts/${postId}/comments`);
+        const q = query(commentsRef, orderBy("createdAt", "asc"));
+        const unsubscribeComments = onSnapshot(q, (snapshot) => {
+            const commentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setComments(commentsData);
+        });
+
+        return () => {
+            unsubscribePost();
+            unsubscribeComments();
+        };
     }, [postId, goBack]);
+
+    const handleLike = async () => {
+        if (!post || !currentUser) return;
+        const liked = post.likes?.includes(currentUser.uid);
+        try {
+            await updateDoc(doc(db, 'posts', postId), {
+                likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+            });
+        } catch (e) {
+            console.error("Error updating like: ", e);
+        }
+    };
+
+    const handleBookmark = async () => {
+        if (!post || !currentUser) return;
+        const bookmarked = post.bookmarks?.includes(currentUser.uid);
+        try {
+            await updateDoc(doc(db, 'posts', postId), {
+                bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+            });
+        } catch(e) {
+            console.error("Error updating bookmark:", e);
+        }
+    };
+
+    const handleCommentSubmit = async (e) => {
+        e.preventDefault();
+        if (!newComment.trim() || !currentUser) return;
+        try {
+            await addDoc(collection(db, `posts/${postId}/comments`), {
+                text: newComment.trim(),
+                authorId: currentUser.uid,
+                authorName: currentUser.displayName,
+                createdAt: Timestamp.now(),
+                likes: []
+            });
+            await updateDoc(doc(db, 'posts', postId), { commentCount: increment(1) });
+            setNewComment('');
+        } catch (error) {
+            console.error("Error adding comment: ", error);
+        }
+    };
+
+    const handleCommentLike = async (commentId, currentLikes = []) => {
+        if (!currentUser) return;
+        const commentRef = doc(db, `posts/${postId}/comments`, commentId);
+        const liked = currentLikes.includes(currentUser.uid);
+        try {
+            await updateDoc(commentRef, {
+                likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+            });
+        } catch(e) {
+            console.error("Error liking comment:", e);
+        }
+    };
 
     const handleDelete = async (postId, imagePath) => {
         if (!post || post.authorId !== currentUser.uid) return;
         if (window.confirm("정말로 이 게시글을 삭제하시겠습니까?")) {
             try {
-                if (imagePath) { await deleteObject(ref(storage, imagePath)); }
+                // Delete comments first
+                const commentsRef = collection(db, 'posts', postId, 'comments');
+                const commentsSnap = await getDocs(commentsRef);
+                const deletePromises = commentsSnap.docs.map(doc => deleteDoc(doc.ref));
+                await Promise.all(deletePromises);
+                
+                // Delete image from storage
+                if (imagePath) {
+                    await deleteObject(ref(storage, imagePath));
+                }
+
+                // Delete the post
                 await deleteDoc(doc(db, 'posts', postId));
-                alert("게시글이 삭제되었습니다."); goBack();
+                
+                alert("게시글이 삭제되었습니다.");
+                goBack();
             } catch (error) {
+                console.error("Error deleting post:", error)
                 alert("삭제 중 오류가 발생했습니다.");
             }
         }
     };
 
+
     if (loading) return <LoadingSpinner />;
-    if (!post || !currentUser) return null;
+    if (!post) return null;
 
     const isAuthor = post.authorId === currentUser.uid;
+    const isLiked = post.likes?.includes(currentUser.uid);
+    const isBookmarked = post.bookmarks?.includes(currentUser.uid);
+    const style = getCategoryStyle(post.category);
 
     return (
-        <div className="p-4 pb-20">
-            <div className="mb-4 pb-4 border-b">
-                <span className={`text-xs font-bold ${getCategoryStyle(post.category).text} ${getCategoryStyle(post.category).bg} px-2 py-1 rounded-md mb-2 inline-block`}>{post.category}</span>
-                <div className="flex justify-between items-start mt-2">
-                    <h1 className="text-2xl font-bold flex-1 pr-4">{post.title}</h1>
-                    {isAuthor && (
+        <div className="pb-20">
+            <div className="p-4">
+                <div className="mb-4 pb-4 border-b">
+                    <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md mb-2 inline-block`}>{post.category}</span>
+                    <div className="flex justify-between items-start mt-2">
+                        <h1 className="text-2xl font-bold flex-1 pr-4">{post.title}</h1>
                         <div className="flex items-center gap-2">
-                            <button onClick={() => setCurrentPage('editPost', post)} className="p-1 text-gray-500 hover:text-blue-600"><Pencil size={20} /></button>
-                            <button onClick={() => handleDelete(post.id, post.imagePath)} className="p-1 text-gray-500 hover:text-red-600"><Trash2 size={20} /></button>
+                            {isAuthor && (
+                                <>
+                                    <button onClick={() => setCurrentPage('editPost', post)} className="p-1 text-gray-500 hover:text-blue-600"><Pencil size={20} /></button>
+                                    <button onClick={() => handleDelete(post.id, post.imagePath)} className="p-1 text-gray-500 hover:text-red-600"><Trash2 size={20} /></button>
+                                </>
+                            )}
+                            <button onClick={handleBookmark} className="p-1 -mr-1">
+                                <Star size={22} className={isBookmarked ? "text-yellow-400 fill-current" : "text-gray-400"} />
+                            </button>
                         </div>
-                    )}
+                    </div>
+                    <div className="flex items-center text-sm text-gray-500 mt-4">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 mr-2"></div>
+                        <span onClick={() => setCurrentPage('userProfile', post.authorId)} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
+                        <span className="mx-2">·</span>
+                        <span>{timeSince(post.createdAt)}</span>
+                    </div>
+                    {post.imageUrl && ( <div className="my-4"><img src={post.imageUrl} alt="Post" className="w-full h-auto rounded-lg object-cover" /></div> )}
+                    <p className="text-gray-800 leading-relaxed whitespace-pre-wrap mt-4">{post.content}</p>
                 </div>
-                <div className="flex items-center text-sm text-gray-500 mt-4">
-                    <div className="w-8 h-8 rounded-full bg-gray-200 mr-2"></div>
-                    <span className="font-semibold">{post.authorName}</span>
-                    <span className="mx-2">·</span>
-                    <span>{timeSince(post.createdAt)}</span>
+                <div className="flex items-center gap-4 mb-4">
+                    <button onClick={handleLike} className="flex items-center gap-1 text-gray-600 hover:text-red-500">
+                        <Heart size={20} className={isLiked ? "text-red-500 fill-current" : ""} />
+                        <span>좋아요 {post.likes?.length || 0}</span>
+                    </button>
+                    <div className="flex items-center gap-1 text-gray-600">
+                        <MessageCircle size={20} /> <span>댓글 {comments.length}</span>
+                    </div>
                 </div>
-                {post.imageUrl && ( <div className="my-4"><img src={post.imageUrl} alt="Post" className="w-full h-auto rounded-lg object-cover" /></div> )}
-                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap mt-4">{post.content}</p>
+                <div className="space-y-4">
+                    {comments.map(comment => (
+                        <div key={comment.id} className="flex gap-3">
+                             <div className="w-8 h-8 rounded-full bg-gray-200 mt-1 flex-shrink-0"></div>
+                             <div className="flex-1">
+                                <div className="bg-gray-100 p-3 rounded-lg">
+                                    <p onClick={() => setCurrentPage('userProfile', comment.authorId)} className="font-semibold text-sm cursor-pointer hover:underline">{comment.authorName}</p>
+                                    <p className="text-gray-800">{comment.text}</p>
+                                </div>
+                                <div className="flex items-center mt-1 text-xs text-gray-500">
+                                    <span>{timeSince(comment.createdAt)}</span>
+                                    <button onClick={() => handleCommentLike(comment.id, comment.likes)} className="ml-4 flex items-center hover:text-red-500">
+                                      <Heart size={12} className={comment.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : ''} />
+                                      <span className="ml-1">{comment.likes?.length || 0}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto bg-white border-t p-3">
+                <form onSubmit={handleCommentSubmit} className="relative flex items-center">
+                    <input
+                        type="text"
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="댓글을 입력하세요."
+                        className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                    />
+                    <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
+                        <Send size={20} />
+                    </button>
+                </form>
             </div>
         </div>
     );
 };
 
+const UserProfilePage = ({ userId, setCurrentPage, currentUser }) => {
+    const [profileUser, setProfileUser] = useState(null);
+    const [userPosts, setUserPosts] = useState([]);
+    const [isFollowing, setIsFollowing] = useState(false);
+
+    useEffect(() => {
+        if (!userId) return;
+
+        const userRef = doc(db, 'users', userId);
+        const unsubscribeUser = onSnapshot(userRef, (doc) => {
+            if(doc.exists()){
+                const userData = doc.data();
+                setProfileUser({...userData, id: doc.id, uid: doc.id});
+                setIsFollowing(userData.followers?.includes(currentUser.uid) || false);
+            }
+        });
+
+        const userPostsQuery = query(collection(db, 'posts'), where("authorId", "==", userId), orderBy("createdAt", "desc"));
+        const unsubscribePosts = onSnapshot(userPostsQuery, (snapshot) => {
+            setUserPosts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+        });
+        
+        return () => { unsubscribeUser(); unsubscribePosts(); };
+    }, [userId, currentUser.uid]);
+
+    const handleFollow = async () => {
+        const currentUserRef = doc(db, 'users', currentUser.uid);
+        const profileUserRef = doc(db, 'users', userId);
+        if(isFollowing){
+            await updateDoc(currentUserRef, { following: arrayRemove(userId) });
+            await updateDoc(profileUserRef, { followers: arrayRemove(currentUser.uid) });
+        } else {
+            await updateDoc(currentUserRef, { following: arrayUnion(userId) });
+            await updateDoc(profileUserRef, { followers: arrayUnion(currentUser.uid) });
+        }
+    };
+    
+    const handleLogout = async () => {
+        if (window.confirm('로그아웃 하시겠습니까?')) {
+            await signOut(auth);
+        }
+    };
+
+    const handleMessage = () => {
+        setCurrentPage('chatPage', { recipientId: userId, recipientName: profileUser.displayName });
+    };
+
+    if(!profileUser) return <LoadingSpinner />;
+    const isMyProfile = currentUser.uid === userId;
+
+    return (
+        <div className="p-4">
+            <div className="flex items-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-gray-300 mr-4 flex-shrink-0"></div>
+                <div className="flex-1">
+                    <h2 className="text-xl font-bold">{profileUser.displayName}</h2>
+                    <div className="text-sm text-gray-500">
+                        <span>팔로워 {profileUser.followers?.length || 0}</span>
+                        <span className="mx-2">·</span>
+                        <span>팔로잉 {profileUser.following?.length || 0}</span>
+                    </div>
+                </div>
+            </div>
+            <div className="flex gap-2 mb-6">
+                {isMyProfile ? (
+                    <>
+                        <button onClick={() => alert('프로필 편집 기능은 준비 중입니다.')} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
+                            <Edit size={16} /> 프로필 편집
+                        </button>
+                        <button onClick={handleLogout} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
+                            <LogOut size={16} /> 로그아웃
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        <button onClick={handleFollow} className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg ${isFollowing ? 'bg-gray-200 text-gray-800' : 'bg-[#00462A] text-white'}`}>
+                            {isFollowing ? '팔로잉' : '팔로우'}
+                        </button>
+                        <button onClick={handleMessage} className="flex-1 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-500 text-white flex items-center justify-center gap-1">
+                             <MessageSquare size={16} /> 메시지
+                        </button>
+                    </>
+                )}
+            </div>
+
+            <div className="space-y-3">
+                <h3 className="text-lg font-bold">작성한 글</h3>
+                {userPosts.length > 0 ? userPosts.map(post => (
+                     <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                        <h4 className="font-bold text-md truncate mb-1">{post.title}</h4>
+                        <p className="text-gray-600 text-sm truncate">{post.content}</p>
+                    </div>
+                )) : ( <p className="text-center text-gray-500 py-10">아직 작성한 글이 없습니다.</p> )}
+            </div>
+        </div>
+    );
+};
+
+
+const SearchPage = ({ posts, setCurrentPage }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const filteredPosts = searchTerm ? posts.filter(post => post.title.toLowerCase().includes(searchTerm.toLowerCase()) || post.content.toLowerCase().includes(searchTerm.toLowerCase())) : [];
+    return (
+        <div className="p-4">
+            <div className="relative mb-4">
+                <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="검색어를 입력하세요..."
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            </div>
+            <div className="space-y-3">
+                {searchTerm && filteredPosts.length === 0 && ( <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p> )}
+                {filteredPosts.map(post => (
+                     <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                        <h3 className="font-bold text-md truncate mb-1">{post.title}</h3>
+                        <p className="text-gray-600 text-sm truncate">{post.content}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const NotificationsPage = () => {
+    const notifications = [
+        { id: 1, text: '알림 기능은 APP 버전에서만 작동합니다.', time: '방금 전' },
+        { id: 2, text: '7월 정식 앱 출시를 기대해주세요!', time: '방금 전' },
+    ];
+    return ( <div className="p-4"> {notifications.map(notif => ( <div key={notif.id} className="p-3 border-b border-gray-200"> <p className="text-sm">{notif.text}</p> <p className="text-xs text-gray-500 mt-1">{notif.time}</p> </div> ))} </div> );
+};
+
+const ChatListPage = ({ chats, setCurrentPage }) => {
+    return (
+        <div className="p-4">
+            <h2 className="text-xl font-bold mb-4">채팅 목록</h2>
+            <div className="space-y-3">
+                {chats.length > 0 ? chats.map(chat => (
+                    <div key={chat.id} onClick={() => setCurrentPage('chatPage', { recipientId: chat.otherUser.uid, recipientName: chat.otherUser.displayName })}
+                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-gray-300 flex-shrink-0"></div>
+                        <div className="flex-1 overflow-hidden">
+                            <h3 className="font-bold">{chat.otherUser.displayName}</h3>
+                            <p className="text-sm text-gray-500 truncate">{chat.lastMessage?.text || '메시지를 보내보세요.'}</p>
+                        </div>
+                    </div>
+                )) : (
+                    <p className="text-center text-gray-500 py-10">진행중인 대화가 없습니다.</p>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const ChatPage = ({ pageParam, currentUser, goBack }) => {
+    const { recipientId } = pageParam;
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const messagesEndRef = useRef(null);
+    
+    const chatId = [currentUser.uid, recipientId].sort().join('_');
+
+    useEffect(() => {
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        const q = query(messagesRef, orderBy('createdAt', 'asc'));
+        const unsubscribe = onSnapshot(q, snapshot => {
+            setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return unsubscribe;
+    }, [chatId]);
+    
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessage.trim()) return;
+
+        const messageData = {
+            text: newMessage,
+            senderId: currentUser.uid,
+            createdAt: Timestamp.now(),
+        };
+
+        const chatRef = doc(db, 'chats', chatId);
+        const messagesRef = collection(chatRef, 'messages');
+        
+        try {
+            await addDoc(messagesRef, messageData);
+            await setDoc(chatRef, {
+                members: [currentUser.uid, recipientId],
+                lastMessage: messageData,
+            }, { merge: true });
+            setNewMessage('');
+        } catch (error) {
+            console.error("Error sending message:", error);
+        }
+    };
+    
+    // This component now uses the full screen height minus the header.
+    return (
+         <div className="flex flex-col h-full"> 
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.senderId === currentUser.uid ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-xs p-3 rounded-lg ${msg.senderId === currentUser.uid ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
+                            <p>{msg.text}</p>
+                        </div>
+                    </div>
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+            <div className="bg-white border-t p-3">
+                 <form onSubmit={handleSendMessage} className="relative flex items-center">
+                    <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="메시지를 입력하세요."
+                        className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                    />
+                    <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
+                        <Send size={20} />
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// --- 네비게이션 ---
 const BottomNav = ({ currentPage, setCurrentPage }) => {
     const navItems = [
         { id: 'home', icon: Home, label: '홈' }, 
@@ -573,6 +1182,7 @@ const BottomNav = ({ currentPage, setCurrentPage }) => {
     );
 };
 
+
 // =================================================================
 // ▼▼▼ 메인 App 컴포넌트 ▼▼▼
 // =================================================================
@@ -586,64 +1196,148 @@ export default function App() {
     const [buanNews, setBuanNews] = useState([]);
     const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
+    const [chats, setChats] = useState([]);
     const [likedNews, setLikedNews] = useState([]);
 
     // Auth 상태 리스너
     useEffect(() => {
-        const authUnsubscribe = onAuthStateChanged(auth, user => {
+        let userDocUnsubscribe = null;
+        const authUnsubscribe = onAuthStateChanged(auth, (user) => {
+            if (userDocUnsubscribe) {
+                userDocUnsubscribe();
+            }
             if (user) {
                 const userRef = doc(db, "users", user.uid);
-                const userDocUnsubscribe = onSnapshot(userRef, (userSnap) => {
-                    setCurrentUser({ ...user, ...(userSnap.exists() ? userSnap.data() : {}) });
-                    setLikedNews(userSnap.exists() ? userSnap.data().likedNews || [] : []);
-                    if(loading) setLoading(false);
-                }, () => setLoading(false));
-                return () => userDocUnsubscribe();
+                userDocUnsubscribe = onSnapshot(userRef, (userSnap) => {
+                    const userData = userSnap.exists() ? userSnap.data() : {};
+                    setCurrentUser({ ...user, ...userData });
+                    setLikedNews(userData.likedNews || []);
+                    if(loading) setLoading(false); 
+                }, (error) => {
+                    console.error("User doc snapshot error:", error);
+                    setLoading(false);
+                });
             } else {
-                setCurrentUser(null); setLoading(false);
+                setCurrentUser(null);
+                setLoading(false);
             }
         });
-        return () => authUnsubscribe();
-    }, [loading]);
+        return () => {
+            authUnsubscribe();
+            if (userDocUnsubscribe) {
+                userDocUnsubscribe();
+            }
+        };
+    }, [loading]); // 'loading' dependency to re-evaluate when manually set to true.
 
     // Firestore 데이터 리스너
     useEffect(() => {
-        if (!currentUser) return;
-
-        const unsubNews = onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), (snapshot) => {
-            setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-
-        const unsubPosts = onSnapshot(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50)), (snapshot) => {
-            setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-        
-        let unsubFollowing = () => {};
-        if (currentUser.following && currentUser.following.length > 0) {
-           unsubFollowing = onSnapshot(query(collection(db, "posts"), where('authorId', 'in', currentUser.following), orderBy("createdAt", "desc"), limit(20)), (snapshot) => {
-               setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-           });
-        } else {
+        if (!currentUser?.uid) {
+            // Clear data when user logs out
+            setPosts([]);
             setFollowingPosts([]);
+            setUserEvents({});
+            setChats([]);
+            setBuanNews([]);
+            return;
         }
+
+        const unsubscribes = [];
+
+        // News listener
+        unsubscribes.push(onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), (snapshot) => {
+            setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }));
+
+        // Posts listener
+        unsubscribes.push(onSnapshot(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50)), (snapshot) => {
+            setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }));
         
-        return () => { unsubNews(); unsubPosts(); unsubFollowing(); };
-    }, [currentUser]);
+        // User events listener
+        const qEvents = query(collection(db, `users/${currentUser.uid}/events`));
+        unsubscribes.push(onSnapshot(qEvents, (snapshot) => {
+            const eventsData = {};
+            snapshot.docs.forEach(doc => {
+                const event = { id: doc.id, ...doc.data() };
+                if (!eventsData[event.date]) eventsData[event.date] = [];
+                eventsData[event.date].push(event);
+            });
+            setUserEvents(eventsData);
+        }));
+
+        // Chats listener
+        const qChats = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
+        unsubscribes.push(onSnapshot(qChats, async (snapshot) => {
+            const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
+                const chatData = docSnap.data();
+                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
+                if (!otherMemberId) return null;
+                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
+                return {
+                    id: docSnap.id,
+                    ...chatData,
+                    otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId },
+                };
+            }));
+            setChats(chatsData.filter(Boolean));
+        }));
+
+        // Following posts listener
+        if (currentUser.following && currentUser.following.length > 0) {
+            const followingIds = currentUser.following.slice(0, 10); // Firestore 'in' query limit
+            const qFollowingPosts = query(collection(db, "posts"), where('authorId', 'in', followingIds), orderBy("createdAt", "desc"), limit(30));
+            unsubscribes.push(onSnapshot(qFollowingPosts, (snapshot) => {
+                setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            }));
+        } else {
+             setFollowingPosts([]);
+        }
+
+        return () => unsubscribes.forEach(unsub => unsub());
+    }, [currentUser?.uid, currentUser?.following]);
 
     const handleLikeNews = async (newsItem) => {
         if (!currentUser) return;
+        
         const userRef = doc(db, 'users', currentUser.uid);
+        const eventsRef = collection(db, 'users', currentUser.uid, 'events');
         const isLiked = likedNews.includes(newsItem.id);
-        try {
-            await updateDoc(userRef, { likedNews: isLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id) });
-        } catch (error) { console.error("Error liking news:", error); }
-    };
 
+        try {
+            if (isLiked) {
+                await updateDoc(userRef, { likedNews: arrayRemove(newsItem.id) });
+                // Remove event from calendar
+                const q = query(eventsRef, where("newsId", "==", newsItem.id));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach(async (doc) => {
+                    await deleteDoc(doc.ref);
+                });
+            } else {
+                await updateDoc(userRef, { likedNews: arrayUnion(newsItem.id) });
+                // Add event to calendar
+                if (newsItem.date) {
+                    await addDoc(eventsRef, {
+                        title: newsItem.title,
+                        date: newsItem.date,
+                        createdAt: Timestamp.now(),
+                        type: 'news',
+                        newsId: newsItem.id
+                    });
+                }
+            }
+        } catch (error) {
+            console.error("Error liking news:", error);
+        }
+    };
+    
     const handleDeleteNews = async (newsId, imagePath) => {
         if(!currentUser || currentUser.uid !== ADMIN_UID) return;
         if (window.confirm("정말로 이 소식을 삭제하시겠습니까?")) {
             try {
-                if (imagePath) { await deleteObject(ref(storage, imagePath)); }
+                if (imagePath) {
+                    await deleteObject(ref(storage, imagePath));
+                }
                 await deleteDoc(doc(db, 'news', newsId));
                 alert("소식이 삭제되었습니다.");
             } catch (error) {
@@ -657,35 +1351,57 @@ export default function App() {
             alert('서비스 준비중입니다.');
             return;
         }
+        setPage(pageName);
+        setPageParam(param);
         setPageHistory(prev => [...prev, {page: pageName, param: param}]);
-        setPage(pageName); setPageParam(param);
     };
-
+    
     const goBack = useCallback(() => {
-        const newHistory = pageHistory.slice(0, -1);
-        if (newHistory.length > 0) {
+        setPageHistory(prevHistory => {
+            if (prevHistory.length <= 1) {
+                 setPage('home');
+                 setPageParam(null);
+                 return [{page: 'home', param: null}];
+            }
+            const newHistory = prevHistory.slice(0, prevHistory.length - 1);
             const lastPage = newHistory[newHistory.length - 1];
-            setPage(lastPage.page || 'home'); setPageParam(lastPage.param || null); setPageHistory(newHistory);
-        } else {
-            setPage('home'); setPageParam(null); setPageHistory([{page: 'home', param: null}]);
-        }
-    }, [pageHistory]);
+            setPage(lastPage.page || 'home');
+            setPageParam(lastPage.param || null);
+            return newHistory;
+        });
+    }, []);
 
     const renderHeader = () => {
-        const isMainPage = page === 'home';
-        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'postDetail': '게시글', 'userProfile': '프로필', 'calendar': '달력' };
-        const title = titleMap[page] || "";
-
-        const hideHeaderOn = ['write', 'writeNews', 'editPost', 'editNews'];
+        const hideHeaderOn = ['write', 'editPost', 'writeNews', 'editNews'];
         if (hideHeaderOn.includes(page)) return null;
+
+        const mainPagesWithLogo = ['home'];
+        const isSubPage = !mainPagesWithLogo.includes(page) && pageHistory.length > 1;
+        
+        const titleMap = {
+            'home': '마을엔 부안', 'news': '소식', 'board': '게시판',
+            'calendar': '달력', 'search': '검색', 'notifications': '알림',
+            'chatList': '채팅', 'userProfile': '프로필',
+            'postDetail': '게시글',
+            'chatPage': pageParam?.recipientName || '채팅'
+        };
+        const title = titleMap[page] || "";
 
         return (
              <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200">
                 <div className="flex items-center gap-2 flex-1">
-                    {isMainPage ? ( <Logo size={28} /> ) : ( <button onClick={goBack} className="p-1 -ml-2"><ArrowLeft size={24} /></button> )}
+                    {isSubPage ? (
+                        <button onClick={goBack} className="p-1 -ml-2"><ArrowLeft size={24} /></button>
+                    ) : (
+                        <Logo size={28} />
+                    )}
                     <h1 className="text-xl font-bold text-gray-800 truncate">{title}</h1>
                 </div>
+
                 <div className="flex items-center gap-3">
+                     <button onClick={() => setCurrentPage('search')} className="p-1"><Search size={24} className="text-gray-600" /></button>
+                     <button onClick={() => setCurrentPage('chatList')} className="p-1"><MessageSquare size={24} className="text-gray-600" /></button>
+                     <button onClick={() => setCurrentPage('notifications')} className="p-1"><Bell size={24} className="text-gray-600" /></button>
                      {currentUser && <button onClick={() => setCurrentPage('userProfile', currentUser.uid)} className="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">{currentUser.displayName?.charAt(0) || '?'}</button>}
                 </div>
             </header>
@@ -695,28 +1411,41 @@ export default function App() {
     const renderPage = () => {
         if (!currentUser) return <LoadingSpinner />;
 
+        const pageProps = { currentUser, setCurrentPage, goBack };
+
         switch (page) {
-            case 'home': return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, handleLikeNews, likedNews, followingPosts, userEvents }} />;
-            case 'news': return <NewsPage {...{ buanNews, currentUser, setCurrentPage, handleDeleteNews, handleLikeNews, likedNews }} />;
-            case 'board': return <BoardPage {...{ posts, setCurrentPage, currentUser }} />;
-            case 'postDetail': return <PostDetailPage {...{ postId: pageParam, setCurrentPage, currentUser, goBack }} />;
-            case 'write': return <WritePage {...{ goBack, currentUser }} />;
-            case 'editPost': return <WritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
-            case 'writeNews': return <NewsWritePage {...{ goBack, currentUser }} />;
-            case 'editNews': return <NewsWritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
-            default: return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, handleLikeNews, likedNews, followingPosts, userEvents }} />;
+            case 'home': return <HomePage {...pageProps} posts={posts} buanNews={buanNews} handleDeleteNews={handleDeleteNews} handleLikeNews={handleLikeNews} likedNews={likedNews} followingPosts={followingPosts} userEvents={userEvents} />;
+            case 'news': return <NewsPage {...pageProps} buanNews={buanNews} handleDeleteNews={handleDeleteNews} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
+            case 'board': return <BoardPage {...pageProps} posts={posts} />;
+            case 'postDetail': return <PostDetailPage {...pageProps} postId={pageParam} />;
+            case 'write': return <WritePage {...pageProps} />;
+            case 'editPost': return <WritePage {...pageProps} itemToEdit={pageParam} />;
+            case 'writeNews': return <NewsWritePage {...pageProps} />;
+            case 'editNews': return <NewsWritePage {...pageProps} itemToEdit={pageParam} />;
+            case 'calendar': return <CalendarPage {...pageProps} userEvents={userEvents} pageParam={pageParam} />;
+            case 'userProfile': return <UserProfilePage {...pageProps} userId={pageParam} />;
+            case 'search': return <SearchPage {...pageProps} posts={posts} />;
+            case 'notifications': return <NotificationsPage />;
+            case 'chatList': return <ChatListPage {...pageProps} chats={chats} />;
+            case 'chatPage': return <ChatPage {...pageProps} pageParam={pageParam} />;
+            default: return <HomePage {...pageProps} posts={posts} buanNews={buanNews} handleDeleteNews={handleDeleteNews} handleLikeNews={handleLikeNews} likedNews={likedNews} followingPosts={followingPosts} userEvents={userEvents} />;
         }
     };
 
     if (loading) return <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen"><LoadingSpinner /></div>;
     if (!currentUser) return <AuthPage />;
 
-    const showNav = !['write', 'writeNews', 'editPost', 'editNews'].includes(page);
+    const showNav = !['write', 'editPost', 'writeNews', 'editNews', 'postDetail', 'chatPage'].includes(page);
+    const mainContentStyle = {
+        paddingBottom: showNav ? '80px' : '0',
+        minHeight: 'calc(100vh - 60px)', // Adjust 60px based on header height
+        height: page === 'chatPage' ? 'calc(100vh - 60px)' : 'auto' // Full height for chat page
+    };
 
     return (
         <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
             {renderHeader()}
-            <main className="bg-white" style={{paddingBottom: showNav ? '80px' : '0', minHeight: 'calc(100vh - 60px)'}}>
+            <main className="bg-white" style={mainContentStyle}>
                 {renderPage()}
             </main>
             {showNav && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
