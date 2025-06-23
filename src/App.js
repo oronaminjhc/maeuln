@@ -25,8 +25,7 @@ import {
     where,
     orderBy,
     limit,
-    deleteDoc,
-    getDocs
+    deleteDoc
 } from 'firebase/firestore';
 import {
     getStorage,
@@ -94,7 +93,7 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
     return (
         <div className="flex-shrink-0 w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
             {news.imageUrl && <img src={news.imageUrl} alt={news.title} className="w-full h-48 object-cover" onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image' }} />}
-            
+
             {isAdmin && (
                 <div className="absolute top-2 left-2 flex gap-2 z-10">
                     <button onClick={() => setCurrentPage('editNews', news)} className="bg-white/70 p-1.5 rounded-full text-blue-600 shadow"><Pencil size={20} /></button>
@@ -105,7 +104,7 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
             <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
             <div className="grid grid-cols-2 gap-px bg-gray-200">
                 <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-                
+
                 {news.applyUrl ? (
                     <a href={news.applyUrl} target="_blank" rel="noopener noreferrer" className="bg-white py-2 text-sm font-semibold text-center text-blue-600 hover:bg-blue-50 flex items-center justify-center">
                         신청하기
@@ -114,6 +113,41 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
                     <button className="bg-white py-2 text-sm font-semibold text-gray-400 cursor-not-allowed" disabled>신청하기</button>
                 )}
             </div>
+        </div>
+    );
+};
+
+const Calendar = ({events = {}, onDateClick = () => {}}) => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const lastDateOfMonth = new Date(year, month + 1, 0).getDate();
+    const dates = [];
+    for (let i = 0; i < firstDayOfMonth; i++) dates.push(<div key={`empty-${i}`} className="p-2"></div>);
+    for (let i = 1; i <= lastDateOfMonth; i++) {
+        const d = new Date(year, month, i);
+        const isToday = d.toDateString() === new Date().toDateString();
+        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        const hasEvent = events[dateString] && events[dateString].length > 0;
+        dates.push(
+            <div key={i} className="relative py-1 text-center text-sm cursor-pointer" onClick={() => onDateClick(dateString)}>
+                <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>{i}</span>
+                {hasEvent && <div className={`absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500`}></div>}
+            </div>
+        );
+    }
+    const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+    const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+    return (
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+            <div className="flex justify-between items-center mb-4">
+                <button onClick={prevMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronLeft size={20} /></button>
+                <h3 className="text-md font-bold">{`${year}년 ${month + 1}월`}</h3>
+                <button onClick={nextMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronRight size={20} /></button>
+            </div>
+            <div className="grid grid-cols-7 text-center text-sm">{daysOfWeek.map((day, i) => (<div key={day} className={`font-bold mb-2 ${i === 0 ? 'text-red-500' : ''} ${i === 6 ? 'text-blue-500' : ''}`}>{day}</div>))}{dates}</div>
         </div>
     );
 };
@@ -178,7 +212,6 @@ const AuthPage = () => {
     );
 };
 
-
 const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -231,41 +264,6 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNe
                     })) : (<p className="text-center text-gray-500 py-4">팔로우하는 사용자의 글이 없습니다.</p>)}
                 </div>
             </section>
-        </div>
-    );
-};
-
-const Calendar = ({events = {}, onDateClick = () => {}}) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1).getDay();
-    const lastDateOfMonth = new Date(year, month + 1, 0).getDate();
-    const dates = [];
-    for (let i = 0; i < firstDayOfMonth; i++) dates.push(<div key={`empty-${i}`} className="p-2"></div>);
-    for (let i = 1; i <= lastDateOfMonth; i++) {
-        const d = new Date(year, month, i);
-        const isToday = d.toDateString() === new Date().toDateString();
-        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-        const hasEvent = events[dateString] && events[dateString].length > 0;
-        dates.push(
-            <div key={i} className="relative py-1 text-center text-sm cursor-pointer" onClick={() => onDateClick(dateString)}>
-                <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>{i}</span>
-                {hasEvent && <div className={`absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500`}></div>}
-            </div>
-        );
-    }
-    const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-    const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-    return (
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex justify-between items-center mb-4">
-                <button onClick={prevMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronLeft size={20} /></button>
-                <h3 className="text-md font-bold">{`${year}년 ${month + 1}월`}</h3>
-                <button onClick={nextMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronRight size={20} /></button>
-            </div>
-            <div className="grid grid-cols-7 text-center text-sm">{daysOfWeek.map((day, i) => (<div key={day} className={`font-bold mb-2 ${i === 0 ? 'text-red-500' : ''} ${i === 6 ? 'text-blue-500' : ''}`}>{day}</div>))}{dates}</div>
         </div>
     );
 };
@@ -364,7 +362,7 @@ const WritePage = ({ goBack, currentUser, itemToEdit, editType }) => {
             setIsSubmitting(false);
         }
     };
-
+    
     return (
         <div className="p-4 space-y-4">
             {isNewsEdit ? (
@@ -385,10 +383,6 @@ const WritePage = ({ goBack, currentUser, itemToEdit, editType }) => {
                 <input id="image-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 {imagePreview && ( <div className="mt-4 relative w-32 h-32"> <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" /> <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button> </div> )}
             </div>
-
-            <button onClick={handleSubmit} disabled={isSubmitting} className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400">
-                {isSubmitting ? '등록 중...' : '완료'}
-            </button>
         </div>
     );
 };
@@ -447,8 +441,6 @@ const BoardPage = ({ posts, setCurrentPage, currentUser }) => {
 
 const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
     const [post, setPost] = useState(null);
-    const [comments, setComments] = useState([]);
-    const [newComment, setNewComment] = useState('');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -459,12 +451,7 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
             else { alert("삭제된 게시글입니다."); goBack(); }
             setLoading(false);
         });
-        const commentsRef = collection(db, 'posts', postId, 'comments');
-        const q = query(commentsRef, orderBy("createdAt", "asc"));
-        const unsubscribeComments = onSnapshot(q, (snapshot) => {
-            setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-        return () => { unsubscribePost(); unsubscribeComments(); };
+        return () => unsubscribePost();
     }, [postId, goBack]);
 
     const handleDelete = async (postId, imagePath) => {
@@ -510,7 +497,6 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
                 {post.imageUrl && ( <div className="my-4"><img src={post.imageUrl} alt="Post" className="w-full h-auto rounded-lg object-cover" /></div> )}
                 <p className="text-gray-800 leading-relaxed whitespace-pre-wrap mt-4">{post.content}</p>
             </div>
-            {/* 댓글 기능 등 나머지 UI는 필요시 여기에 추가 */}
         </div>
     );
 };
@@ -692,17 +678,7 @@ export default function App() {
             setFollowingPosts([]);
         }
         
-        const unsubEvents = onSnapshot(query(collection(db, 'users', currentUser.uid, 'events')), (snapshot) => {
-            const eventsData = {};
-            snapshot.docs.forEach(doc => {
-                const event = { id: doc.id, ...doc.data() };
-                if (!eventsData[event.date]) eventsData[event.date] = [];
-                eventsData[event.date].push(event);
-            });
-            setUserEvents(eventsData);
-        });
-
-        return () => { unsubNews(); unsubPosts(); unsubFollowing(); unsubEvents(); };
+        return () => { unsubNews(); unsubPosts(); unsubFollowing(); };
     }, [currentUser]);
 
     const handleDeleteNews = async (newsId, imagePath) => {
@@ -745,8 +721,6 @@ export default function App() {
                     <h1 className="text-xl font-bold text-gray-800 truncate">{title}</h1>
                 </div>
                 <div className="flex items-center gap-3">
-                     <button onClick={() => setCurrentPage('search')} className="p-1"><Search size={24} className="text-gray-600" /></button>
-                     <button onClick={() => setCurrentPage('notifications')} className="p-1"><Bell size={24} className="text-gray-600" /></button>
                      {currentUser && <button onClick={() => setCurrentPage('userProfile', currentUser.uid)} className="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">{currentUser.displayName?.charAt(0) || '?'}</button>}
                 </div>
             </header>
