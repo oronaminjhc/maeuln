@@ -526,7 +526,7 @@ const WritePage = ({ setCurrentPage, currentUser, postToEdit }) => {
                     await deleteObject(oldImageRef).catch(err => console.error("기존 이미지 삭제 실패:", err));
                 }
                 // 1b. 새 이미지 업로드
-                const newImagePath = `posts/<span class="math-inline">\{currentUser\.uid\}/</span>{Date.now()}_${imageFile.name}`;
+		const newImagePath = `posts/<span class="math-inline">\{currentUser\.uid\}/</span>{Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
                 await uploadBytes(storageRef, imageFile);
                 imageUrl = await getDownloadURL(storageRef);
