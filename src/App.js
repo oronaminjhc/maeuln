@@ -298,46 +298,138 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     const handleImageChange = (e) => {
-        if (e.target.files[0]) { const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // 파일 크기 체크 (10MB 제한)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('파일 크기는 10MB 이하여야 합니다.');
+            e.target.value = '';
+            return;
+        }
+
+        // 파일 형식 체크
+        if (!file.type.startsWith('image/')) {
+            alert('이미지 파일만 업로드 가능합니다.');
+            e.target.value = '';
+            return;
+        }
+
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(file));
     };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
+        if (!title.trim() || !content.trim()) { 
+            alert('제목과 내용을 모두 입력해주세요.'); 
+            return; 
+        }
         if (isSubmitting) return;
         setIsSubmitting(true);
+        setUploadProgress(0);
 
         try {
             let imageUrl = itemToEdit?.imageUrl || null;
             let imagePath = itemToEdit?.imagePath || null;
 
             if (imageFile) {
-                if (itemToEdit?.imagePath) { await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err)); }
-                const newImagePath = `news_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
+                console.log('이미지 업로드 시작:', imageFile.name);
+                
+                // 기존 이미지 삭제
+                if (itemToEdit?.imagePath) { 
+                    try {
+                        await deleteObject(ref(storage, itemToEdit.imagePath));
+                        console.log('기존 이미지 삭제 완료');
+                    } catch (err) { 
+                        console.error("기존 이미지 삭제 실패:", err); 
+                    }
+                }
+
+                // 새 이미지 업로드
+                const timestamp = Date.now();
+                const fileName = `${timestamp}_${imageFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+                const newImagePath = `news_images/${currentUser.uid}/${fileName}`;
                 const storageRef = ref(storage, newImagePath);
-                await uploadBytes(storageRef, imageFile);
-                imageUrl = await getDownloadURL(storageRef);
-                imagePath = newImagePath;
+                
+                console.log('Storage 경로:', newImagePath);
+                
+                try {
+                    // 업로드 진행률 표시를 위한 uploadTask 사용
+                    const uploadTask = uploadBytesResumable(storageRef, imageFile);
+                    
+                    await new Promise((resolve, reject) => {
+                        uploadTask.on('state_changed',
+                            (snapshot) => {
+                                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                                setUploadProgress(progress);
+                                console.log('업로드 진행률:', progress + '%');
+                            },
+                            (error) => {
+                                console.error('업로드 에러:', error);
+                                reject(error);
+                            },
+                            async () => {
+                                try {
+                                    imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                                    imagePath = newImagePath;
+                                    console.log('이미지 업로드 성공:', imageUrl);
+                                    resolve();
+                                } catch (error) {
+                                    console.error('다운로드 URL 가져오기 실패:', error);
+                                    reject(error);
+                                }
+                            }
+                        );
+                    });
+                } catch (uploadError) {
+                    console.error('이미지 업로드 실패:', uploadError);
+                    throw new Error(`이미지 업로드 실패: ${uploadError.message}`);
+                }
             }
 
-            const finalData = { title, content, imageUrl, imagePath, updatedAt: Timestamp.now(), tags: tags.split(',').map(t => t.trim()).filter(Boolean), applyUrl };
+            const finalData = { 
+                title: title.trim(), 
+                content: content.trim(), 
+                imageUrl, 
+                imagePath, 
+                updatedAt: Timestamp.now(), 
+                tags: tags.split(',').map(t => t.trim()).filter(Boolean), 
+                applyUrl: applyUrl.trim() || null
+            };
+
+            console.log('저장할 데이터:', finalData);
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'news', itemToEdit.id), finalData);
+                console.log('소식 수정 완료');
             } else {
                 finalData.createdAt = Timestamp.now();
                 finalData.authorId = currentUser.uid;
                 await addDoc(collection(db, 'news'), finalData);
+                console.log('소식 작성 완료');
             }
+            
+            alert(itemToEdit ? '소식이 수정되었습니다!' : '소식이 등록되었습니다!');
             goBack();
         } catch (error) {
+            console.error('소식 저장 실패:', error);
             alert(`오류가 발생했습니다: ${error.message}`);
         } finally {
             setIsSubmitting(false);
+            setUploadProgress(0);
         }
     };
-    
+
+    const removeImage = () => {
+        setImageFile(null);
+        setImagePreview(null);
+        // 파일 input 초기화
+        const fileInput = document.getElementById('news-image-upload');
+        if (fileInput) fileInput.value = '';
+    };    
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
 
     return (
@@ -897,7 +989,7 @@ export default function App() {
 
     const showNav = !['write', 'writeNews', 'editPost', 'editNews', 'postDetail', 'chatPage'].includes(page);
 
-    return (
+    return (thlr
         <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
             {renderHeader()}
             <main className="bg-white" style={{paddingBottom: showNav ? '80px' : '0', minHeight: 'calc(100vh - 60px)'}}>
