@@ -27,6 +27,7 @@ import {
     getStorage,
     ref,
     uploadBytes,
+    uploadBytesResumable,
     getDownloadURL,
     deleteObject
 } from 'firebase/storage';
@@ -370,50 +371,265 @@ const WritePage = ({ goBack, currentUser, itemToEdit }) => {
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     const categories = ['일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
 
     const handleImageChange = (e) => {
-        if (e.target.files[0]) {
-            const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file));
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // 파일 크기 체크 (10MB 제한)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('파일 크기는 10MB 이하여야 합니다.');
+            e.target.value = '';
+            return;
         }
+
+        // 파일 형식 체크
+        if (!file.type.startsWith('image/')) {
+            alert('이미지 파일만 업로드 가능합니다.');
+            e.target.value = '';
+            return;
+        }
+
+        setImageFile(file);
+        
+        // 이미지 미리보기 생성
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            setImagePreview(e.target.result);
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
+        if (!title.trim() || !content.trim()) {
+            alert('제목과 내용을 모두 입력해주세요.');
+            return;
+        }
+        
         if (isSubmitting) return;
         setIsSubmitting(true);
+        setUploadProgress(0);
 
         try {
             let imageUrl = itemToEdit?.imageUrl || null;
             let imagePath = itemToEdit?.imagePath || null;
 
+            // 새 이미지 업로드
             if (imageFile) {
-                if (itemToEdit?.imagePath) { await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err)); }
-                const newImagePath = `posts/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
+                console.log('이미지 업로드 시작:', imageFile.name);
+                
+                // 기존 이미지 삭제
+                if (itemToEdit?.imagePath) {
+                    try {
+                        await deleteObject(ref(storage, itemToEdit.imagePath));
+                        console.log('기존 이미지 삭제 완료');
+                    } catch (err) {
+                        console.error("기존 이미지 삭제 실패:", err);
+                    }
+                }
+
+                // 새 이미지 업로드
+                const timestamp = Date.now();
+                const fileName = `${timestamp}_${imageFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+                const newImagePath = `posts/${currentUser.uid}/${fileName}`;
                 const storageRef = ref(storage, newImagePath);
-                await uploadBytes(storageRef, imageFile);
-                imageUrl = await getDownloadURL(storageRef);
-                imagePath = newImagePath;
+                
+                console.log('Storage 경로:', newImagePath);
+                
+                try {
+                    // 업로드 진행률 표시를 위한 uploadTask 사용
+                    const uploadTask = uploadBytesResumable(storageRef, imageFile);
+                    
+                    await new Promise((resolve, reject) => {
+                        uploadTask.on('state_changed',
+                            (snapshot) => {
+                                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                                setUploadProgress(progress);
+                                console.log('업로드 진행률:', progress + '%');
+                            },
+                            (error) => {
+                                console.error('업로드 에러:', error);
+                                reject(error);
+                            },
+                            async () => {
+                                try {
+                                    imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                                    imagePath = newImagePath;
+                                    console.log('이미지 업로드 성공:', imageUrl);
+                                    resolve();
+                                } catch (error) {
+                                    console.error('다운로드 URL 가져오기 실패:', error);
+                                    reject(error);
+                                }
+                            }
+                        );
+                    });
+                } catch (uploadError) {
+                    console.error('이미지 업로드 실패:', uploadError);
+                    throw new Error(`이미지 업로드 실패: ${uploadError.message}`);
+                }
             }
 
-            const postData = { title, content, category, imageUrl, imagePath, updatedAt: Timestamp.now() };
+            // Firestore에 게시글 저장
+            const postData = {
+                title: title.trim(),
+                content: content.trim(),
+                category,
+                imageUrl,
+                imagePath,
+                updatedAt: Timestamp.now()
+            };
+
+            console.log('저장할 데이터:', postData);
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'posts', itemToEdit.id), postData);
+                console.log('게시글 수정 완료');
             } else {
                 await addDoc(collection(db, 'posts'), {
-                    ...postData, authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(),
-                    likes: [], bookmarks: [], commentCount: 0,
+                    ...postData,
+                    authorId: currentUser.uid,
+                    authorName: currentUser.displayName || '익명',
+                    createdAt: Timestamp.now(),
+                    likes: [],
+                    bookmarks: [],
+                    commentCount: 0,
                 });
+                console.log('게시글 작성 완료');
             }
+            
+            alert(itemToEdit ? '게시글이 수정되었습니다!' : '게시글이 작성되었습니다!');
             goBack();
+            
         } catch (error) {
+            console.error('게시글 저장 실패:', error);
             alert(`오류가 발생했습니다: ${error.message}`);
         } finally {
             setIsSubmitting(false);
+            setUploadProgress(0);
         }
     };
+
+    const removeImage = () => {
+        setImageFile(null);
+        setImagePreview(null);
+        // 파일 input 초기화
+        const fileInput = document.getElementById('image-upload');
+        if (fileInput) fileInput.value = '';
+    };
+
+    const pageTitle = itemToEdit ? "글 수정" : "글쓰기";
+
+    return (
+        <div>
+            <div className="p-4 flex items-center border-b">
+                <button onClick={goBack} className="p-2 -ml-2" disabled={isSubmitting}>
+                    <ArrowLeft />
+                </button>
+                <h2 className="text-lg font-bold mx-auto">{pageTitle}</h2>
+                <button 
+                    onClick={handleSubmit} 
+                    disabled={isSubmitting || !title.trim() || !content.trim()} 
+                    className="text-lg font-bold text-[#00462A] disabled:text-gray-400"
+                >
+                    {isSubmitting ? '저장 중...' : '완료'}
+                </button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+                {/* 카테고리 선택 */}
+                <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {categories.map(cat => (
+                        <button
+                            key={cat}
+                            onClick={() => setCategory(cat)}
+                            disabled={isSubmitting}
+                            className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${
+                                category === cat 
+                                    ? `${getCategoryStyle(cat).bgStrong} text-white` 
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            } disabled:opacity-50`}
+                        >
+                            {cat}
+                        </button>
+                    ))}
+                </div>
+
+                {/* 제목 입력 */}
+                <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="제목"
+                    disabled={isSubmitting}
+                    className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A] disabled:bg-gray-100"
+                />
+
+                {/* 내용 입력 */}
+                <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="내용을 입력하세요..."
+                    disabled={isSubmitting}
+                    className="w-full h-64 p-2 focus:outline-none resize-none disabled:bg-gray-100"
+                />
+
+                {/* 이미지 업로드 섹션 */}
+                <div className="border-t pt-4">
+                    <label 
+                        htmlFor="image-upload" 
+                        className={`cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A] ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        <ImageUp size={20} />
+                        <span>사진 추가</span>
+                    </label>
+                    <input
+                        id="image-upload"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        disabled={isSubmitting}
+                        className="hidden"
+                    />
+                    
+                    {/* 업로드 진행률 표시 */}
+                    {isSubmitting && uploadProgress > 0 && uploadProgress < 100 && (
+                        <div className="mt-2">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                    className="bg-[#00462A] h-2 rounded-full transition-all duration-300" 
+                                    style={{width: `${uploadProgress}%`}}
+                                ></div>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">업로드 중... {Math.round(uploadProgress)}%</p>
+                        </div>
+                    )}
+                    
+                    {/* 이미지 미리보기 */}
+                    {imagePreview && (
+                        <div className="mt-4 relative inline-block">
+                            <img 
+                                src={imagePreview} 
+                                alt="Preview" 
+                                className="w-32 h-32 object-cover rounded-lg border-2 border-gray-200" 
+                            />
+                            <button
+                                onClick={removeImage}
+                                disabled={isSubmitting}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 disabled:opacity-50"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
     const pageTitle = itemToEdit ? "글 수정" : "글쓰기";
 
