@@ -27,11 +27,10 @@ import {
     getStorage,
     ref,
     uploadBytes,
-    uploadBytesResumable,
     getDownloadURL,
     deleteObject
 } from 'firebase/storage';
-import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp } from 'lucide-react';
+import { Home, Newspaper, LayoutGrid, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronRight, X, Pencil, LogOut, Edit, Trash2, ImageUp } from 'lucide-react';
 
 // ★ 관리자 UID 지정
 const ADMIN_UID = 'wvXNcSqXMsaiqOCgBvU7A4pJoFv1';
@@ -90,7 +89,7 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
     return (
         <div className="flex-shrink-0 w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
             {news.imageUrl && <img src={news.imageUrl} alt={news.title} className="w-full h-48 object-cover" onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image' }} />}
-
+            
             {isAdmin && (
                 <div className="absolute top-2 left-2 flex gap-2 z-10">
                     <button onClick={() => setCurrentPage('editNews', news)} className="bg-white/70 p-1.5 rounded-full text-blue-600 shadow"><Pencil size={20} /></button>
@@ -101,7 +100,7 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
             <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
             <div className="grid grid-cols-2 gap-px bg-gray-200">
                 <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-
+                
                 {news.applyUrl ? (
                     <a href={news.applyUrl} target="_blank" rel="noopener noreferrer" className="bg-white py-2 text-sm font-semibold text-center text-blue-600 hover:bg-blue-50 flex items-center justify-center">
                         신청하기
@@ -113,42 +112,6 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
         </div>
     );
 };
-
-const Calendar = ({events = {}, onDateClick = () => {}}) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1).getDay();
-    const lastDateOfMonth = new Date(year, month + 1, 0).getDate();
-    const dates = [];
-    for (let i = 0; i < firstDayOfMonth; i++) dates.push(<div key={`empty-${i}`} className="p-2"></div>);
-    for (let i = 1; i <= lastDateOfMonth; i++) {
-        const d = new Date(year, month, i);
-        const isToday = d.toDateString() === new Date().toDateString();
-        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-        const hasEvent = events[dateString] && events[dateString].length > 0;
-        dates.push(
-            <div key={i} className="relative py-1 text-center text-sm cursor-pointer" onClick={() => onDateClick(dateString)}>
-                <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>{i}</span>
-                {hasEvent && <div className={`absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500`}></div>}
-            </div>
-        );
-    }
-    const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-    const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-    return (
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex justify-between items-center mb-4">
-                <button onClick={prevMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronLeft size={20} /></button>
-                <h3 className="text-md font-bold">{`${year}년 ${month + 1}월`}</h3>
-                <button onClick={nextMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronRight size={20} /></button>
-            </div>
-            <div className="grid grid-cols-7 text-center text-sm">{daysOfWeek.map((day, i) => (<div key={day} className={`font-bold mb-2 ${i === 0 ? 'text-red-500' : ''} ${i === 6 ? 'text-blue-500' : ''}`}>{day}</div>))}{dates}</div>
-        </div>
-    );
-};
-
 
 // =================================================================
 // ▼▼▼ 페이지 컴포넌트들 ▼▼▼
@@ -208,7 +171,7 @@ const AuthPage = () => {
     );
 };
 
-const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }) => {
+const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
@@ -231,45 +194,15 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNe
                      {buanNews.length === 0 && <div className="text-center text-gray-500 w-full p-8 bg-gray-100 rounded-lg">아직 등록된 소식이 없습니다.</div>}
                 </div>
             </section>
-            
-            <section>
-                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">부안 달력</h2><a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a></div>
-                <Calendar events={userEvents} onDateClick={(date) => setCurrentPage('calendar', { date })}/>
-            </section>
-            
-            <section>
-                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 인기있는 글</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
-                <div className="space-y-3">
-                    {popularPosts.length > 0 ? (popularPosts.map(post => { const style = getCategoryStyle(post.category);
-                        return (<div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><p className="truncate flex-1">{post.title}</p><div className="flex items-center text-xs text-gray-400 gap-2"><Heart size={14} className="text-red-400"/><span>{post.likes?.length || 0}</span></div></div>);
-                    })) : (<p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>)}
-                </div>
-            </section>
-
-            <section>
-                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">팔로잉</h2></div>
-                <div className="space-y-3">
-                    {followingPosts.length > 0 ? (followingPosts.map(post => { const style = getCategoryStyle(post.category);
-                        return (
-                        <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
-                            <div className="flex items-center gap-2 mb-2"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><h3 className="font-bold text-md truncate flex-1">{post.title}</h3></div>
-                            <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
-                            <div className="flex justify-between items-center text-xs text-gray-500"><div><span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span><span className="mx-1">·</span><span>{timeSince(post.createdAt)}</span></div><div className="flex items-center gap-3"><div className="flex items-center gap-1"><Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} /><span>{post.likes?.length || 0}</span></div><div className="flex items-center gap-1"><MessageCircle size={14} className="text-gray-400"/><span>{post.commentCount || 0}</span></div></div></div>
-                        </div>
-                        );
-                    })) : (<p className="text-center text-gray-500 py-4">팔로우하는 사용자의 글이 없습니다.</p>)}
-                </div>
-            </section>
         </div>
     );
 };
 
 
 const NewsPage = ({ buanNews, currentUser, setCurrentPage, handleDeleteNews }) => {
+    const isAdmin = currentUser.uid === ADMIN_UID;
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
-    const isAdmin = currentUser.uid === ADMIN_UID;
-
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
     return (
@@ -298,138 +231,46 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
 
     const handleImageChange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        // 파일 크기 체크 (10MB 제한)
-        if (file.size > 10 * 1024 * 1024) {
-            alert('파일 크기는 10MB 이하여야 합니다.');
-            e.target.value = '';
-            return;
-        }
-
-        // 파일 형식 체크
-        if (!file.type.startsWith('image/')) {
-            alert('이미지 파일만 업로드 가능합니다.');
-            e.target.value = '';
-            return;
-        }
-
-        setImageFile(file);
-        setImagePreview(URL.createObjectURL(file));
+        if (e.target.files[0]) { const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
     };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) { 
-            alert('제목과 내용을 모두 입력해주세요.'); 
-            return; 
-        }
+        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
         if (isSubmitting) return;
         setIsSubmitting(true);
-        setUploadProgress(0);
 
         try {
             let imageUrl = itemToEdit?.imageUrl || null;
             let imagePath = itemToEdit?.imagePath || null;
 
             if (imageFile) {
-                console.log('이미지 업로드 시작:', imageFile.name);
-                
-                // 기존 이미지 삭제
-                if (itemToEdit?.imagePath) { 
-                    try {
-                        await deleteObject(ref(storage, itemToEdit.imagePath));
-                        console.log('기존 이미지 삭제 완료');
-                    } catch (err) { 
-                        console.error("기존 이미지 삭제 실패:", err); 
-                    }
-                }
-
-                // 새 이미지 업로드
-                const timestamp = Date.now();
-                const fileName = `${timestamp}_${imageFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-                const newImagePath = `news_images/${currentUser.uid}/${fileName}`;
+                if (itemToEdit?.imagePath) { await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err)); }
+                const newImagePath = `news_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
-                
-                console.log('Storage 경로:', newImagePath);
-                
-                try {
-                    // 업로드 진행률 표시를 위한 uploadTask 사용
-                    const uploadTask = uploadBytesResumable(storageRef, imageFile);
-                    
-                    await new Promise((resolve, reject) => {
-                        uploadTask.on('state_changed',
-                            (snapshot) => {
-                                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                                setUploadProgress(progress);
-                                console.log('업로드 진행률:', progress + '%');
-                            },
-                            (error) => {
-                                console.error('업로드 에러:', error);
-                                reject(error);
-                            },
-                            async () => {
-                                try {
-                                    imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                                    imagePath = newImagePath;
-                                    console.log('이미지 업로드 성공:', imageUrl);
-                                    resolve();
-                                } catch (error) {
-                                    console.error('다운로드 URL 가져오기 실패:', error);
-                                    reject(error);
-                                }
-                            }
-                        );
-                    });
-                } catch (uploadError) {
-                    console.error('이미지 업로드 실패:', uploadError);
-                    throw new Error(`이미지 업로드 실패: ${uploadError.message}`);
-                }
+                await uploadBytes(storageRef, imageFile);
+                imageUrl = await getDownloadURL(storageRef);
+                imagePath = newImagePath;
             }
 
-            const finalData = { 
-                title: title.trim(), 
-                content: content.trim(), 
-                imageUrl, 
-                imagePath, 
-                updatedAt: Timestamp.now(), 
-                tags: tags.split(',').map(t => t.trim()).filter(Boolean), 
-                applyUrl: applyUrl.trim() || null
-            };
-
-            console.log('저장할 데이터:', finalData);
+            const finalData = { title, content, imageUrl, imagePath, updatedAt: Timestamp.now(), tags: tags.split(',').map(t => t.trim()).filter(Boolean), applyUrl };
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'news', itemToEdit.id), finalData);
-                console.log('소식 수정 완료');
             } else {
                 finalData.createdAt = Timestamp.now();
                 finalData.authorId = currentUser.uid;
                 await addDoc(collection(db, 'news'), finalData);
-                console.log('소식 작성 완료');
             }
-            
-            alert(itemToEdit ? '소식이 수정되었습니다!' : '소식이 등록되었습니다!');
             goBack();
         } catch (error) {
-            console.error('소식 저장 실패:', error);
             alert(`오류가 발생했습니다: ${error.message}`);
         } finally {
             setIsSubmitting(false);
-            setUploadProgress(0);
         }
     };
 
-    const removeImage = () => {
-        setImageFile(null);
-        setImagePreview(null);
-        // 파일 input 초기화
-        const fileInput = document.getElementById('news-image-upload');
-        if (fileInput) fileInput.value = '';
-    };    
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
 
     return (
@@ -447,8 +288,8 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
                 <div className="border-t pt-4">
-                    <label htmlFor="image-upload" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
-                    <input id="image-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    <label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
+                    <input id="image-upload-news" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                     {imagePreview && ( <div className="mt-4 relative w-32 h-32"> <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" /> <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button> </div> )}
                 </div>
             </div>
@@ -463,265 +304,50 @@ const WritePage = ({ goBack, currentUser, itemToEdit }) => {
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
 
     const categories = ['일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
 
     const handleImageChange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        // 파일 크기 체크 (10MB 제한)
-        if (file.size > 10 * 1024 * 1024) {
-            alert('파일 크기는 10MB 이하여야 합니다.');
-            e.target.value = '';
-            return;
+        if (e.target.files[0]) {
+            const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file));
         }
-
-        // 파일 형식 체크
-        if (!file.type.startsWith('image/')) {
-            alert('이미지 파일만 업로드 가능합니다.');
-            e.target.value = '';
-            return;
-        }
-
-        setImageFile(file);
-        
-        // 이미지 미리보기 생성
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            setImagePreview(e.target.result);
-        };
-        reader.readAsDataURL(file);
     };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim()) {
-            alert('제목과 내용을 모두 입력해주세요.');
-            return;
-        }
-        
+        if (!title.trim() || !content.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
         if (isSubmitting) return;
         setIsSubmitting(true);
-        setUploadProgress(0);
 
         try {
             let imageUrl = itemToEdit?.imageUrl || null;
             let imagePath = itemToEdit?.imagePath || null;
 
-            // 새 이미지 업로드
             if (imageFile) {
-                console.log('이미지 업로드 시작:', imageFile.name);
-                
-                // 기존 이미지 삭제
-                if (itemToEdit?.imagePath) {
-                    try {
-                        await deleteObject(ref(storage, itemToEdit.imagePath));
-                        console.log('기존 이미지 삭제 완료');
-                    } catch (err) {
-                        console.error("기존 이미지 삭제 실패:", err);
-                    }
-                }
-
-                // 새 이미지 업로드
-                const timestamp = Date.now();
-                const fileName = `${timestamp}_${imageFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-                const newImagePath = `posts/${currentUser.uid}/${fileName}`;
+                if (itemToEdit?.imagePath) { await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err)); }
+                const newImagePath = `posts/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
-                
-                console.log('Storage 경로:', newImagePath);
-                
-                try {
-                    // 업로드 진행률 표시를 위한 uploadTask 사용
-                    const uploadTask = uploadBytesResumable(storageRef, imageFile);
-                    
-                    await new Promise((resolve, reject) => {
-                        uploadTask.on('state_changed',
-                            (snapshot) => {
-                                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                                setUploadProgress(progress);
-                                console.log('업로드 진행률:', progress + '%');
-                            },
-                            (error) => {
-                                console.error('업로드 에러:', error);
-                                reject(error);
-                            },
-                            async () => {
-                                try {
-                                    imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                                    imagePath = newImagePath;
-                                    console.log('이미지 업로드 성공:', imageUrl);
-                                    resolve();
-                                } catch (error) {
-                                    console.error('다운로드 URL 가져오기 실패:', error);
-                                    reject(error);
-                                }
-                            }
-                        );
-                    });
-                } catch (uploadError) {
-                    console.error('이미지 업로드 실패:', uploadError);
-                    throw new Error(`이미지 업로드 실패: ${uploadError.message}`);
-                }
+                await uploadBytes(storageRef, imageFile);
+                imageUrl = await getDownloadURL(storageRef);
+                imagePath = newImagePath;
             }
 
-            // Firestore에 게시글 저장
-            const postData = {
-                title: title.trim(),
-                content: content.trim(),
-                category,
-                imageUrl,
-                imagePath,
-                updatedAt: Timestamp.now()
-            };
-
-            console.log('저장할 데이터:', postData);
+            const postData = { title, content, category, imageUrl, imagePath, updatedAt: Timestamp.now() };
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'posts', itemToEdit.id), postData);
-                console.log('게시글 수정 완료');
             } else {
                 await addDoc(collection(db, 'posts'), {
-                    ...postData,
-                    authorId: currentUser.uid,
-                    authorName: currentUser.displayName || '익명',
-                    createdAt: Timestamp.now(),
-                    likes: [],
-                    bookmarks: [],
-                    commentCount: 0,
+                    ...postData, authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now(),
+                    likes: [], bookmarks: [], commentCount: 0,
                 });
-                console.log('게시글 작성 완료');
             }
-            
-            alert(itemToEdit ? '게시글이 수정되었습니다!' : '게시글이 작성되었습니다!');
             goBack();
-            
         } catch (error) {
-            console.error('게시글 저장 실패:', error);
             alert(`오류가 발생했습니다: ${error.message}`);
         } finally {
             setIsSubmitting(false);
-            setUploadProgress(0);
         }
     };
-
-    const removeImage = () => {
-        setImageFile(null);
-        setImagePreview(null);
-        // 파일 input 초기화
-        const fileInput = document.getElementById('image-upload');
-        if (fileInput) fileInput.value = '';
-    };
-
-    const pageTitle = itemToEdit ? "글 수정" : "글쓰기";
-
-    return (
-        <div>
-            <div className="p-4 flex items-center border-b">
-                <button onClick={goBack} className="p-2 -ml-2" disabled={isSubmitting}>
-                    <ArrowLeft />
-                </button>
-                <h2 className="text-lg font-bold mx-auto">{pageTitle}</h2>
-                <button 
-                    onClick={handleSubmit} 
-                    disabled={isSubmitting || !title.trim() || !content.trim()} 
-                    className="text-lg font-bold text-[#00462A] disabled:text-gray-400"
-                >
-                    {isSubmitting ? '저장 중...' : '완료'}
-                </button>
-            </div>
-            
-            <div className="p-4 space-y-4">
-                {/* 카테고리 선택 */}
-                <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    {categories.map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setCategory(cat)}
-                            disabled={isSubmitting}
-                            className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${
-                                category === cat 
-                                    ? `${getCategoryStyle(cat).bgStrong} text-white` 
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            } disabled:opacity-50`}
-                        >
-                            {cat}
-                        </button>
-                    ))}
-                </div>
-
-                {/* 제목 입력 */}
-                <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="제목"
-                    disabled={isSubmitting}
-                    className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A] disabled:bg-gray-100"
-                />
-
-                {/* 내용 입력 */}
-                <textarea
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="내용을 입력하세요..."
-                    disabled={isSubmitting}
-                    className="w-full h-64 p-2 focus:outline-none resize-none disabled:bg-gray-100"
-                />
-
-                {/* 이미지 업로드 섹션 */}
-                <div className="border-t pt-4">
-                    <label 
-                        htmlFor="image-upload" 
-                        className={`cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A] ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        <ImageUp size={20} />
-                        <span>사진 추가</span>
-                    </label>
-                    <input
-                        id="image-upload"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageChange}
-                        disabled={isSubmitting}
-                        className="hidden"
-                    />
-                    
-                    {/* 업로드 진행률 표시 */}
-                    {isSubmitting && uploadProgress > 0 && uploadProgress < 100 && (
-                        <div className="mt-2">
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div 
-                                    className="bg-[#00462A] h-2 rounded-full transition-all duration-300" 
-                                    style={{width: `${uploadProgress}%`}}
-                                ></div>
-                            </div>
-                            <p className="text-sm text-gray-600 mt-1">업로드 중... {Math.round(uploadProgress)}%</p>
-                        </div>
-                    )}
-                    
-                    {/* 이미지 미리보기 */}
-                    {imagePreview && (
-                        <div className="mt-4 relative inline-block">
-                            <img 
-                                src={imagePreview} 
-                                alt="Preview" 
-                                className="w-32 h-32 object-cover rounded-lg border-2 border-gray-200" 
-                            />
-                            <button
-                                onClick={removeImage}
-                                disabled={isSubmitting}
-                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 disabled:opacity-50"
-                            >
-                                <X size={14} />
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
 
     const pageTitle = itemToEdit ? "글 수정" : "글쓰기";
 
@@ -741,8 +367,8 @@ const WritePage = ({ goBack, currentUser, itemToEdit }) => {
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
                 <div className="border-t pt-4">
-                    <label htmlFor="image-upload" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
-                    <input id="image-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    <label htmlFor="image-upload-post" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
+                    <input id="image-upload-post" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                     {imagePreview && ( <div className="mt-4 relative w-32 h-32"> <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" /> <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button> </div> )}
                 </div>
             </div>
@@ -915,7 +541,7 @@ export default function App() {
         const unsubPosts = onSnapshot(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50)), (snapshot) => {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-
+        
         return () => { unsubNews(); unsubPosts(); };
     }, []);
 
@@ -972,7 +598,7 @@ export default function App() {
         if (!currentUser) return <LoadingSpinner />;
 
         switch (page) {
-            case 'home': return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }} />;
+            case 'home': return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts: [], userEvents: {} }} />;
             case 'news': return <NewsPage {...{ buanNews, currentUser, setCurrentPage, handleDeleteNews }} />;
             case 'board': return <BoardPage {...{ posts, setCurrentPage, currentUser }} />;
             case 'postDetail': return <PostDetailPage {...{ postId: pageParam, setCurrentPage, currentUser, goBack }} />;
@@ -980,16 +606,16 @@ export default function App() {
             case 'editPost': return <WritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
             case 'writeNews': return <NewsWritePage {...{ goBack, currentUser }} />;
             case 'editNews': return <NewsWritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
-            default: return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }} />;
+            default: return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts: [], userEvents: {} }} />;
         }
     };
 
     if (loading) return <div className="max-w-sm mx-auto bg-white shadow-lg min-h-screen"><LoadingSpinner /></div>;
     if (!currentUser) return <AuthPage />;
 
-    const showNav = !['write', 'writeNews', 'editPost', 'editNews', 'postDetail', 'chatPage'].includes(page);
+    const showNav = !['write', 'writeNews', 'editPost', 'editNews'].includes(page);
 
-    return (thlr
+    return (
         <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
             {renderHeader()}
             <main className="bg-white" style={{paddingBottom: showNav ? '80px' : '0', minHeight: 'calc(100vh - 60px)'}}>
