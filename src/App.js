@@ -403,7 +403,7 @@ const ApplyForm = ({ news, onSubmit }) => {
                 <div className="flex items-center h-5">
                     <input id="agreement" name="agreement" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="focus:ring-[#00462A] h-4 w-4 text-[#00462A] border-gray-300 rounded" />
                 </div>
-                <div className="ml-3 text-sm"> <label htmlFor="agreement" className="font-medium text-gray-700">개인정보제공에 동의합니다.</label> </div>
+                <div className="ml-3 text-sm"> <label htmlFor="agreement" className="font-medium text-gray-700">신청 기능은 7월 1일 베타 버전 이후 활성화됩니다!</label> </div>
             </div>
             <button type="submit" className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#00462A] hover:bg-[#003a22] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00462A]">
                 제출하기
@@ -777,8 +777,8 @@ const BottomNav = ({ currentPage, setCurrentPage }) => {
 
 const NotificationsPage = () => {
     const notifications = [
-        { id: 1, text: '새로운 이벤트 "나의 삶, 한 권의 책"이 등록되었습니다.', time: '2시간 전' },
-        { id: 2, text: '관심있는 이벤트 "7월 행복UP클래스" 신청이 시작되었습니다.', time: '8시간 전' },
+        { id: 1, text: '알림 기능은 APP 버전에서만 작동합니다.', time: '방금 전' },
+        { id: 2, text: '7월 정식 앱 출시를 기대해주세요!', time: '방금 전' },
     ];
     return ( <div className="p-4"> {notifications.map(notif => ( <div key={notif.id} className="p-3 border-b border-gray-200"> <p className="text-sm">{notif.text}</p> <p className="text-xs text-gray-500 mt-1">{notif.time}</p> </div> ))} </div> );
 };
