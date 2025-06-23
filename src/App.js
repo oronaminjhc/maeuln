@@ -30,7 +30,7 @@ import {
     getDownloadURL,
     deleteObject
 } from 'firebase/storage';
-import { Home, Newspaper, LayoutGrid, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronRight, X, Pencil, LogOut, Edit, Trash2, ImageUp } from 'lucide-react';
+import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp } from 'lucide-react';
 
 // ★ 관리자 UID 지정
 const ADMIN_UID = 'wvXNcSqXMsaiqOCgBvU7A4pJoFv1';
@@ -113,8 +113,44 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
     );
 };
 
+const Calendar = ({events = {}, onDateClick = () => {}}) => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const lastDateOfMonth = new Date(year, month + 1, 0).getDate();
+    const dates = [];
+    for (let i = 0; i < firstDayOfMonth; i++) dates.push(<div key={`empty-${i}`} className="p-2"></div>);
+    for (let i = 1; i <= lastDateOfMonth; i++) {
+        const d = new Date(year, month, i);
+        const isToday = d.toDateString() === new Date().toDateString();
+        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        const hasEvent = events[dateString] && events[dateString].length > 0;
+        dates.push(
+            <div key={i} className="relative py-1 text-center text-sm cursor-pointer" onClick={() => onDateClick(dateString)}>
+                <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>{i}</span>
+                {hasEvent && <div className={`absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500`}></div>}
+            </div>
+        );
+    }
+    const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+    const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+    return (
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+            <div className="flex justify-between items-center mb-4">
+                <button onClick={prevMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronLeft size={20} /></button>
+                <h3 className="text-md font-bold">{`${year}년 ${month + 1}월`}</h3>
+                <button onClick={nextMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronRight size={20} /></button>
+            </div>
+            <div className="grid grid-cols-7 text-center text-sm">{daysOfWeek.map((day, i) => (<div key={day} className={`font-bold mb-2 ${i === 0 ? 'text-red-500' : ''} ${i === 6 ? 'text-blue-500' : ''}`}>{day}</div>))}{dates}</div>
+        </div>
+    );
+};
+
+
 // =================================================================
-// ▼▼▼ 페이지 컴포넌트들 ▼▼▼
+// ▼▼▼ 페이지 컴포넌트들 (모두 포함) ▼▼▼
 // =================================================================
 
 const AuthPage = () => {
@@ -171,7 +207,7 @@ const AuthPage = () => {
     );
 };
 
-const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews }) => {
+const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
@@ -192,6 +228,35 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNe
                         </div>
                     ))}
                      {buanNews.length === 0 && <div className="text-center text-gray-500 w-full p-8 bg-gray-100 rounded-lg">아직 등록된 소식이 없습니다.</div>}
+                </div>
+            </section>
+            
+            <section>
+                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">부안 달력</h2><a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a></div>
+                <Calendar events={userEvents} onDateClick={(date) => setCurrentPage('calendar', { date })}/>
+            </section>
+            
+            <section>
+                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">지금 인기있는 글</h2><a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a></div>
+                <div className="space-y-3">
+                    {popularPosts.length > 0 ? (popularPosts.map(post => { const style = getCategoryStyle(post.category);
+                        return (<div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><p className="truncate flex-1">{post.title}</p><div className="flex items-center text-xs text-gray-400 gap-2"><Heart size={14} className="text-red-400"/><span>{post.likes?.length || 0}</span></div></div>);
+                    })) : (<p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>)}
+                </div>
+            </section>
+
+            <section>
+                <div className="flex justify-between items-center mb-3"><h2 className="text-lg font-bold">팔로잉</h2></div>
+                <div className="space-y-3">
+                    {followingPosts.length > 0 ? (followingPosts.map(post => { const style = getCategoryStyle(post.category);
+                        return (
+                        <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                            <div className="flex items-center gap-2 mb-2"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><h3 className="font-bold text-md truncate flex-1">{post.title}</h3></div>
+                            <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
+                            <div className="flex justify-between items-center text-xs text-gray-500"><div><span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span><span className="mx-1">·</span><span>{timeSince(post.createdAt)}</span></div><div className="flex items-center gap-3"><div className="flex items-center gap-1"><Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} /><span>{post.likes?.length || 0}</span></div><div className="flex items-center gap-1"><MessageCircle size={14} className="text-gray-400"/><span>{post.commentCount || 0}</span></div></div></div>
+                        </div>
+                        );
+                    })) : (<p className="text-center text-gray-500 py-4">팔로우하는 사용자의 글이 없습니다.</p>)}
                 </div>
             </section>
         </div>
@@ -270,7 +335,7 @@ const NewsWritePage = ({ goBack, currentUser, itemToEdit }) => {
             setIsSubmitting(false);
         }
     };
-
+    
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
 
     return (
@@ -478,8 +543,11 @@ const PostDetailPage = ({ postId, setCurrentPage, currentUser, goBack }) => {
 
 const BottomNav = ({ currentPage, setCurrentPage }) => {
     const navItems = [
-        { id: 'home', icon: Home, label: '홈' }, { id: 'board', icon: LayoutGrid, label: '게시판' },
+        { id: 'home', icon: Home, label: '홈' }, 
+        { id: 'board', icon: LayoutGrid, label: '게시판' },
         { id: 'news', icon: Newspaper, label: '소식' },
+        { id: 'clubs', icon: Users, label: '클럽' },
+        { id: 'benefits', icon: TicketPercent, label: '혜택' },
     ];
     return (
         <footer className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto z-20">
@@ -534,6 +602,8 @@ export default function App() {
 
     // Firestore 데이터 리스너
     useEffect(() => {
+        if (!currentUser) return;
+
         const unsubNews = onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), (snapshot) => {
             setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
@@ -542,8 +612,17 @@ export default function App() {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         
-        return () => { unsubNews(); unsubPosts(); };
-    }, []);
+        let unsubFollowing = () => {};
+        if (currentUser.following && currentUser.following.length > 0) {
+           unsubFollowing = onSnapshot(query(collection(db, "posts"), where('authorId', 'in', currentUser.following), orderBy("createdAt", "desc"), limit(20)), (snapshot) => {
+               setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+           });
+        } else {
+            setFollowingPosts([]);
+        }
+        
+        return () => { unsubNews(); unsubPosts(); unsubFollowing(); };
+    }, [currentUser]);
 
     const handleDeleteNews = async (newsId, imagePath) => {
         if(!currentUser || currentUser.uid !== ADMIN_UID) return;
@@ -559,6 +638,10 @@ export default function App() {
     };
 
     const setCurrentPage = (pageName, param = null) => {
+        if (['clubs', 'benefits'].includes(pageName)) {
+            alert('서비스 준비중입니다.');
+            return;
+        }
         setPageHistory(prev => [...prev, {page: pageName, param: param}]);
         setPage(pageName); setPageParam(param);
     };
@@ -575,7 +658,7 @@ export default function App() {
 
     const renderHeader = () => {
         const isMainPage = page === 'home';
-        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'postDetail': '게시글' };
+        const titleMap = { 'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'postDetail': '게시글', 'userProfile': '프로필', 'calendar': '달력' };
         const title = titleMap[page] || "";
 
         const hideHeaderOn = ['write', 'writeNews', 'editPost', 'editNews'];
@@ -598,7 +681,7 @@ export default function App() {
         if (!currentUser) return <LoadingSpinner />;
 
         switch (page) {
-            case 'home': return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts: [], userEvents: {} }} />;
+            case 'home': return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }} />;
             case 'news': return <NewsPage {...{ buanNews, currentUser, setCurrentPage, handleDeleteNews }} />;
             case 'board': return <BoardPage {...{ posts, setCurrentPage, currentUser }} />;
             case 'postDetail': return <PostDetailPage {...{ postId: pageParam, setCurrentPage, currentUser, goBack }} />;
@@ -606,7 +689,7 @@ export default function App() {
             case 'editPost': return <WritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
             case 'writeNews': return <NewsWritePage {...{ goBack, currentUser }} />;
             case 'editNews': return <NewsWritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
-            default: return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts: [], userEvents: {} }} />;
+            default: return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }} />;
         }
     };
 
