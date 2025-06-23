@@ -22,10 +22,10 @@ import {
     orderBy,
     limit,
     deleteDoc,
-    arrayRemove,
+    getDocs,
     arrayUnion,
-    increment,
-    getDocs
+    arrayRemove,
+    increment
 } from 'firebase/firestore';
 import {
     getStorage,
@@ -89,7 +89,7 @@ const LoadingSpinner = () => (
     </div>
 );
 
-const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews }) => {
+const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked }) => {
     return (
         <div className="flex-shrink-0 w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
             {news.imageUrl && <img src={news.imageUrl} alt={news.title} className="w-full h-48 object-cover" onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image' }} />}
@@ -100,11 +100,12 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
                     <button onClick={() => handleDeleteNews(news.id, news.imagePath)} className="bg-white/70 p-1.5 rounded-full text-red-600 shadow"><Trash2 size={20} /></button>
                 </div>
             )}
-
+             <button onClick={() => handleLikeNews(news)} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
+                <Heart size={20} className={isLiked ? "text-red-500 fill-current" : "text-gray-500"} />
+            </button>
             <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
             <div className="grid grid-cols-2 gap-px bg-gray-200">
                 <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-                
                 {news.applyUrl ? (
                     <a href={news.applyUrl} target="_blank" rel="noopener noreferrer" className="bg-white py-2 text-sm font-semibold text-center text-blue-600 hover:bg-blue-50 flex items-center justify-center">
                         신청하기
@@ -153,7 +154,7 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
 };
 
 // =================================================================
-// ▼▼▼ 페이지 컴포넌트들 ▼▼▼
+// ▼▼▼ 페이지 컴포넌트들 (모두 포함) ▼▼▼
 // =================================================================
 
 const AuthPage = () => {
@@ -176,7 +177,7 @@ const AuthPage = () => {
                 await updateProfile(user, { displayName: nickname });
                 const userRef = doc(db, "users", user.uid);
                 await setDoc(userRef, {
-                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: []
+                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: [], likedNews: []
                 });
             }
         } catch (err) {
@@ -210,7 +211,7 @@ const AuthPage = () => {
     );
 };
 
-const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }) => {
+const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, handleLikeNews, likedNews, followingPosts, userEvents }) => {
     const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
@@ -227,7 +228,7 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNe
                 <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {buanNews.map((news) => (
                         <div key={news.id} className="w-4/5 md:w-3/5">
-                            <NewsCard {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews}} />
+                            <NewsCard {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
                         </div>
                     ))}
                      {buanNews.length === 0 && <div className="text-center text-gray-500 w-full p-8 bg-gray-100 rounded-lg">아직 등록된 소식이 없습니다.</div>}
@@ -266,7 +267,8 @@ const HomePage = ({ setCurrentPage, posts, buanNews, currentUser, handleDeleteNe
     );
 };
 
-const NewsPage = ({ buanNews, currentUser, setCurrentPage, handleDeleteNews }) => {
+
+const NewsPage = ({ buanNews, currentUser, setCurrentPage, handleDeleteNews, handleLikeNews, likedNews }) => {
     const isAdmin = currentUser.uid === ADMIN_UID;
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
@@ -283,7 +285,7 @@ const NewsPage = ({ buanNews, currentUser, setCurrentPage, handleDeleteNews }) =
             <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>{selectedNews && (<div><h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2><p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p></div>)}</Modal>
 
             <div className="space-y-4">
-                {buanNews.map((news) => ( <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews}} /> ))}
+                {buanNews.map((news) => ( <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} /> ))}
                 {buanNews.length === 0 && <div className="text-center text-gray-500 py-10 p-8 bg-gray-100 rounded-lg">등록된 소식이 없습니다.</div>}
             </div>
         </div>
@@ -584,6 +586,7 @@ export default function App() {
     const [buanNews, setBuanNews] = useState([]);
     const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
+    const [likedNews, setLikedNews] = useState([]);
 
     // Auth 상태 리스너
     useEffect(() => {
@@ -592,6 +595,7 @@ export default function App() {
                 const userRef = doc(db, "users", user.uid);
                 const userDocUnsubscribe = onSnapshot(userRef, (userSnap) => {
                     setCurrentUser({ ...user, ...(userSnap.exists() ? userSnap.data() : {}) });
+                    setLikedNews(userSnap.exists() ? userSnap.data().likedNews || [] : []);
                     if(loading) setLoading(false);
                 }, () => setLoading(false));
                 return () => userDocUnsubscribe();
@@ -604,6 +608,8 @@ export default function App() {
 
     // Firestore 데이터 리스너
     useEffect(() => {
+        if (!currentUser) return;
+
         const unsubNews = onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), (snapshot) => {
             setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
@@ -612,8 +618,26 @@ export default function App() {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         
-        return () => { unsubNews(); unsubPosts(); };
-    }, []);
+        let unsubFollowing = () => {};
+        if (currentUser.following && currentUser.following.length > 0) {
+           unsubFollowing = onSnapshot(query(collection(db, "posts"), where('authorId', 'in', currentUser.following), orderBy("createdAt", "desc"), limit(20)), (snapshot) => {
+               setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+           });
+        } else {
+            setFollowingPosts([]);
+        }
+        
+        return () => { unsubNews(); unsubPosts(); unsubFollowing(); };
+    }, [currentUser]);
+
+    const handleLikeNews = async (newsItem) => {
+        if (!currentUser) return;
+        const userRef = doc(db, 'users', currentUser.uid);
+        const isLiked = likedNews.includes(newsItem.id);
+        try {
+            await updateDoc(userRef, { likedNews: isLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id) });
+        } catch (error) { console.error("Error liking news:", error); }
+    };
 
     const handleDeleteNews = async (newsId, imagePath) => {
         if(!currentUser || currentUser.uid !== ADMIN_UID) return;
@@ -672,15 +696,15 @@ export default function App() {
         if (!currentUser) return <LoadingSpinner />;
 
         switch (page) {
-            case 'home': return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }} />;
-            case 'news': return <NewsPage {...{ buanNews, currentUser, setCurrentPage, handleDeleteNews }} />;
+            case 'home': return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, handleLikeNews, likedNews, followingPosts, userEvents }} />;
+            case 'news': return <NewsPage {...{ buanNews, currentUser, setCurrentPage, handleDeleteNews, handleLikeNews, likedNews }} />;
             case 'board': return <BoardPage {...{ posts, setCurrentPage, currentUser }} />;
             case 'postDetail': return <PostDetailPage {...{ postId: pageParam, setCurrentPage, currentUser, goBack }} />;
             case 'write': return <WritePage {...{ goBack, currentUser }} />;
             case 'editPost': return <WritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
             case 'writeNews': return <NewsWritePage {...{ goBack, currentUser }} />;
             case 'editNews': return <NewsWritePage {...{ goBack, currentUser }} itemToEdit={pageParam} />;
-            default: return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, followingPosts, userEvents }} />;
+            default: return <HomePage {...{ setCurrentPage, posts, buanNews, currentUser, handleDeleteNews, handleLikeNews, likedNews, followingPosts, userEvents }} />;
         }
     };
 
