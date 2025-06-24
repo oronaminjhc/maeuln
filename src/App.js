@@ -35,13 +35,13 @@ import {
     getDownloadURL,
     deleteObject
 } from 'firebase/storage';
-import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp } from 'lucide-react';
+import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp, UserCircle } from 'lucide-react';
 
 
 // ★ 관리자 UID 지정
 const ADMIN_UID = 'wvXNcSqXMsaiqOCgBvU7A4pJoFv1';
 
-// --- Firebase 설정 ---주소 수정 확인
+// --- Firebase 설정 ---
 const firebaseConfig = {
     apiKey: "AIzaSyAd7ns6wCL72P7X5_qZxX23sBxdkMhWAeg",
     authDomain: "maeulbung.firebaseapp.com",
@@ -70,14 +70,18 @@ export const AuthProvider = ({ children }) => {
                 const userRef = doc(db, "users", user.uid);
                 const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
                     const userData = userSnap.exists() ? userSnap.data() : {};
-                    setCurrentUser({ ...user, ...userData });
+                    const finalUser = {
+                        ...user,
+                        ...userData,
+                        photoURL: userData.photoURL || user.photoURL,
+                    };
+                    setCurrentUser(finalUser);
                     setLoading(false);
                 }, (error) => {
                     console.error("User doc snapshot error:", error);
-                    setCurrentUser(user); // 기본 user 정보라도 설정
+                    setCurrentUser(user);
                     setLoading(false);
                 });
-                // cleanup a onSnapshot listener when the auth state changes
                 return () => userUnsubscribe();
             } else {
                 setCurrentUser(null);
@@ -96,7 +100,6 @@ export const AuthProvider = ({ children }) => {
     );
 };
 
-// Context를 쉽게 사용하기 위한 커스텀 훅
 export const useAuth = () => {
     return useContext(AuthContext);
 };
@@ -145,7 +148,6 @@ const Modal = ({ isOpen, onClose, children }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
-                    {/* Modal 제목이 필요하면 여기에 props로 받아서 표시, 현재는 불필요하여 비워둠 */}
                     <div className="w-6"></div>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
                 </div>
@@ -404,16 +406,11 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
     const isAdmin = currentUser.uid === ADMIN_UID;
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
-    
-    // --- 필터링 기능 ---
     const [activeTag, setActiveTag] = useState('전체');
     const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
-
-    // 선택된 태그에 따라 소식 목록을 필터링합니다.
     const filteredNews = activeTag === '전체'
         ? buanNews
         : buanNews.filter(news => news.tags && news.tags.includes(activeTag));
-
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
     return (
@@ -444,9 +441,7 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
                     </div>
                 )}
             </Modal>
-
             <div className="space-y-4">
-                {/* ▼▼▼ 여기를 'filteredNews'로 수정했습니다. ▼▼▼ */}
                 {filteredNews.length > 0 ? (
                     filteredNews.map((news) => (
                         <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
@@ -456,7 +451,6 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
                         {activeTag === '전체' ? '등록된 소식이 없습니다.' : `선택한 태그에 해당하는 소식이 없습니다.`}
                     </div>
                 )}
-                {/* ▲▲▲ 그리고 목록이 없을 때 표시될 메시지도 추가했습니다. ▲▲▲ */}
             </div>
         </div>
     );
@@ -473,7 +467,6 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // 메모리 누수 방지를 위한 useEffect 클린업
     useEffect(() => {
         return () => {
             if (imagePreview && imagePreview.startsWith('blob:')) {
@@ -485,7 +478,6 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
     const handleImageChange = (e) => {
         if (e.target.files[0]) {
             const file = e.target.files[0];
-            // 이전 미리보기 URL 해제
             if (imagePreview && imagePreview.startsWith('blob:')) {
                 URL.revokeObjectURL(imagePreview);
             }
@@ -505,12 +497,11 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
         try {
             let imageUrl = itemToEdit?.imageUrl || null;
             let imagePath = itemToEdit?.imagePath || null;
-
             if (imageFile) {
                 if (itemToEdit?.imagePath) {
                     await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err));
                 }
- 		const newImagePath = `news_images/${Date.now()}_${imageFile.name}`;
+                const newImagePath = `news_images/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
                 await uploadBytes(storageRef, imageFile);
                 imageUrl = await getDownloadURL(storageRef);
@@ -544,7 +535,6 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
     };
 
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
-
     return (
         <div>
             <div className="p-4 flex items-center border-b">
@@ -649,7 +639,6 @@ const CalendarPage = ({ userEvents, pageParam }) => {
     );
 };
 
-// BoardPage: 서버사이드 필터링을 위해 자체적으로 데이터를 fetching하도록 수정
 const BoardPage = ({ setCurrentPage }) => {
     const { currentUser } = useAuth();
     const [posts, setPosts] = useState([]);
@@ -677,7 +666,7 @@ const BoardPage = ({ setCurrentPage }) => {
         });
 
         return () => unsubscribe();
-    }, [filter]); // 필터가 변경될 때마다 쿼리를 다시 실행
+    }, [filter]);
 
     return (
         <div className="p-4">
@@ -746,7 +735,6 @@ const WritePage = ({ goBack, itemToEdit }) => {
 
     const categories = ['일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
 
-    // 메모리 누수 방지를 위한 useEffect 클린업
     useEffect(() => {
         return () => {
             if (imagePreview && imagePreview.startsWith('blob:')) {
@@ -1053,6 +1041,125 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
     );
 };
 
+// =================================================================
+// ▼▼▼ ProfileEditPage 컴포넌트 (새로 추가됨) ▼▼▼
+// =================================================================
+const ProfileEditPage = ({ goBack }) => {
+    const { currentUser } = useAuth();
+    const [bio, setBio] = useState(currentUser?.bio || '');
+    const [town, setTown] = useState(currentUser?.town || '부안읍');
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState(currentUser?.photoURL || null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const towns = ["부안읍", "행안면", "백산면", "주산면", "하서면", "상서면", "동진면", "계화면", "보안면", "줄포면", "진서면", "변산면", "위도면"];
+
+    useEffect(() => {
+        return () => {
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
+        };
+    }, [imagePreview]);
+
+    const handleImageChange = (e) => {
+        if (e.target.files[0]) {
+            const file = e.target.files[0];
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+
+        try {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            let photoURL = currentUser.photoURL;
+
+            if (imageFile) {
+                const imagePath = `profile_images/${currentUser.uid}/profile.jpg`;
+                const storageRef = ref(storage, imagePath);
+                await uploadBytes(storageRef, imageFile);
+                photoURL = await getDownloadURL(storageRef);
+            }
+
+            const dataToUpdate = { bio, town, photoURL };
+
+            await updateDoc(userDocRef, dataToUpdate);
+            
+            if (photoURL !== currentUser.photoURL) {
+                await updateProfile(auth.currentUser, { photoURL });
+            }
+
+            alert('프로필이 성공적으로 업데이트되었습니다.');
+            goBack();
+
+        } catch (error) {
+            console.error("프로필 업데이트 오류:", error);
+            alert(`오류가 발생했습니다: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div>
+            <div className="p-4 flex items-center border-b">
+                <button onClick={goBack} className="p-2 -ml-2"><ArrowLeft /></button>
+                <h2 className="text-lg font-bold mx-auto">프로필 편집</h2>
+                <button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">
+                    {isSubmitting ? '저장 중...' : '저장'}
+                </button>
+            </div>
+            <div className="p-4 flex flex-col items-center">
+                <div className="relative w-24 h-24 mb-4">
+                    <div className="w-full h-full rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
+                        {imagePreview ? (
+                            <img src={imagePreview} alt="프로필 미리보기" className="w-full h-full object-cover" />
+                        ) : (
+                            <UserCircle size={96} className="text-gray-400" />
+                        )}
+                    </div>
+                    <label htmlFor="profile-image-upload" className="absolute bottom-0 right-0 bg-white p-1.5 rounded-full shadow-md cursor-pointer hover:bg-gray-100">
+                        <Pencil size={16} className="text-gray-600" />
+                    </label>
+                    <input id="profile-image-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                </div>
+                
+                <div className="w-full space-y-4 mt-4">
+                    <div>
+                        <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">자기소개</label>
+                        <textarea
+                            id="bio"
+                            value={bio}
+                            onChange={(e) => setBio(e.target.value)}
+                            placeholder="자기소개를 입력해주세요."
+                            className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                            rows="3"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="town" className="block text-sm font-medium text-gray-700 mb-1">동네 선택</label>
+                        <select
+                            id="town"
+                            value={town}
+                            onChange={(e) => setTown(e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                        >
+                            {towns.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const UserProfilePage = ({ userId, setCurrentPage }) => {
     const { currentUser } = useAuth();
     const [profileUser, setProfileUser] = useState(null);
@@ -1066,7 +1173,7 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
         const unsubscribeUser = onSnapshot(userRef, (doc) => {
             if(doc.exists()){
                 const userData = doc.data();
-                setProfileUser({...userData, id: doc.id, uid: doc.id});
+                setProfileUser({...userData, id: doc.id, uid: doc.id, photoURL: userData.photoURL || null});
                 setIsFollowing(userData.followers?.includes(currentUser.uid) || false);
             }
         });
@@ -1107,10 +1214,18 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
     return (
         <div className="p-4">
             <div className="flex items-center mb-6">
-                <div className="w-16 h-16 rounded-full bg-gray-300 mr-4 flex-shrink-0"></div>
+                 <div className="w-16 h-16 rounded-full mr-4 flex-shrink-0 bg-gray-200 overflow-hidden flex items-center justify-center">
+                    {profileUser.photoURL ? (
+                        <img src={profileUser.photoURL} alt={profileUser.displayName} className="w-full h-full object-cover" />
+                    ) : (
+                        <UserCircle size={64} className="text-gray-400" />
+                    )}
+                </div>
                 <div className="flex-1">
                     <h2 className="text-xl font-bold">{profileUser.displayName}</h2>
-                    <div className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-600 mt-1">{profileUser.bio || '자기소개를 입력해주세요.'}</p>
+                    <p className="text-xs text-gray-500 mt-1">{profileUser.town || '동네를 설정해주세요.'}</p>
+                    <div className="text-sm text-gray-500 mt-2">
                         <span>팔로워 {profileUser.followers?.length || 0}</span>
                         <span className="mx-2">·</span>
                         <span>팔로잉 {profileUser.following?.length || 0}</span>
@@ -1120,7 +1235,7 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
             <div className="flex gap-2 mb-6">
                 {isMyProfile ? (
                     <>
-                        <button onClick={() => alert('프로필 편집 기능은 준비 중입니다.')} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
+                        <button onClick={() => setCurrentPage('editProfile')} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
                             <Edit size={16} /> 프로필 편집
                         </button>
                         <button onClick={handleLogout} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
@@ -1152,13 +1267,11 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
     );
 };
 
-
 const SearchPage = ({ setCurrentPage }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    // 검색은 실시간이 아닌, 버튼 클릭 시 수행하도록 변경 (비용 최적화)
     const handleSearch = async () => {
         if (!searchTerm.trim()) {
             setResults([]);
@@ -1166,8 +1279,6 @@ const SearchPage = ({ setCurrentPage }) => {
         }
         setLoading(true);
         try {
-            // 제목으로 검색 (Firestore는 기본적으로 부분 문자열 검색을 지원하지 않음)
-            // 여기서는 '>=', '<=' 트릭을 사용한 prefix 검색을 예시로 보여줌
             const postsRef = collection(db, 'posts');
             const q = query(postsRef, 
                 where('title', '>=', searchTerm),
@@ -1356,15 +1467,13 @@ function AppContent() {
     const [pageHistory, setPageHistory] = useState([{page: 'home', param: null}]);
     const [pageParam, setPageParam] = useState(null);
     
-    // 데이터 상태들
-    const [posts, setPosts] = useState([]); // 홈 화면 인기글, 팔로잉글 용도
+    const [posts, setPosts] = useState([]);
     const [buanNews, setBuanNews] = useState([]);
     const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
     const [chats, setChats] = useState([]);
     const [likedNews, setLikedNews] = useState([]);
 
-    // Firestore 데이터 리스너
     useEffect(() => {
         if (!currentUser?.uid) {
             setPosts([]); setFollowingPosts([]); setUserEvents({}); setChats([]); setBuanNews([]);
@@ -1372,21 +1481,13 @@ function AppContent() {
         }
 
         const unsubscribes = [];
-
-        // likedNews는 currentUser 객체에서 직접 가져옴
         setLikedNews(currentUser.likedNews || []);
-
-        // News listener
         unsubscribes.push(onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), (snapshot) => {
             setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }));
-
-        // Posts listener (홈 화면용)
         unsubscribes.push(onSnapshot(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50)), (snapshot) => {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }));
-        
-        // User events listener
         const qEvents = query(collection(db, `users/${currentUser.uid}/events`));
         unsubscribes.push(onSnapshot(qEvents, (snapshot) => {
             const eventsData = {};
@@ -1397,8 +1498,6 @@ function AppContent() {
             });
             setUserEvents(eventsData);
         }));
-
-        // Chats listener
         const qChats = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
         unsubscribes.push(onSnapshot(qChats, async (snapshot) => {
             const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
@@ -1414,8 +1513,6 @@ function AppContent() {
             }));
             setChats(chatsData.filter(Boolean));
         }));
-
-        // Following posts listener
         if (currentUser.following && currentUser.following.length > 0) {
             const followingIds = currentUser.following.slice(0, 10);
             const qFollowingPosts = query(collection(db, "posts"), where('authorId', 'in', followingIds), orderBy("createdAt", "desc"), limit(30));
@@ -1502,7 +1599,7 @@ function AppContent() {
     }, []);
 
     const renderHeader = () => {
-        const hideHeaderOn = ['write', 'editPost', 'writeNews', 'editNews'];
+        const hideHeaderOn = ['write', 'editPost', 'writeNews', 'editNews', 'editProfile'];
         if (hideHeaderOn.includes(page)) return null;
 
         const mainPagesWithLogo = ['home'];
@@ -1552,6 +1649,7 @@ function AppContent() {
             case 'editNews': return <NewsWritePage {...pageProps} itemToEdit={pageParam} />;
             case 'calendar': return <CalendarPage {...pageProps} userEvents={userEvents} pageParam={pageParam} />;
             case 'userProfile': return <UserProfilePage {...pageProps} userId={pageParam} />;
+            case 'editProfile': return <ProfileEditPage {...pageProps} />;
             case 'search': return <SearchPage {...pageProps} />;
             case 'notifications': return <NotificationsPage />;
             case 'chatList': return <ChatListPage {...pageProps} chats={chats} />;
@@ -1562,7 +1660,7 @@ function AppContent() {
 
     if (!currentUser) return <AuthPage />;
 
-    const showNav = !['write', 'editPost', 'writeNews', 'editNews', 'postDetail', 'chatPage'].includes(page);
+    const showNav = !['write', 'editPost', 'writeNews', 'editNews', 'postDetail', 'chatPage', 'editProfile'].includes(page);
     const mainContentStyle = {
         paddingBottom: showNav ? '80px' : '0',
         minHeight: 'calc(100vh - 60px)',
@@ -1580,7 +1678,6 @@ function AppContent() {
     );
 }
 
-// 최종 App 컴포넌트는 AuthProvider로 AppContent를 감싸서 내보냅니다.
 export default function App() {
     return (
         <AuthProvider>
