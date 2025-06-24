@@ -1404,6 +1404,8 @@ const ChatPage = ({ pageParam }) => {
     );
 };
 
+// App.js 파일에서 이 컴포넌트만 교체하세요.
+
 const ClubListPage = ({ setCurrentPage }) => {
     const [clubs, setClubs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1421,24 +1423,41 @@ const ClubListPage = ({ setCurrentPage }) => {
         return () => unsubscribe();
     }, []);
 
+    // 모임 클릭 시 실행되는 함수 (로직 개선)
     const handleEnterClub = (club) => {
+        // 비밀번호가 없거나, 이미 멤버라면 즉시 입장
         if (!club.password || (club.members && club.members.includes(currentUser.uid))) {
             setCurrentPage('clubDetail', { clubId: club.id });
         } else {
+            // 비밀번호가 있고, 멤버가 아니라면 비밀번호 모달 열기
             setSelectedClub(club);
             setPasswordModalOpen(true);
         }
     };
 
+    // 비밀번호 입력 후 '입장하기' 버튼 클릭 시 실행되는 함수 (로직 수정)
     const handlePasswordSubmit = async () => {
+        if (!selectedClub) return;
+
         if (password === selectedClub.password) {
             const clubRef = doc(db, 'clubs', selectedClub.id);
-            await updateDoc(clubRef, {
-                members: arrayUnion(currentUser.uid)
-            });
+            
+            // 1. 페이지를 먼저 이동시킨다.
+            setCurrentPage('clubDetail', { clubId: selectedClub.id });
+            
+            // 2. 모달을 닫고 상태를 초기화한다.
             setPasswordModalOpen(false);
             setPassword('');
-            setCurrentPage('clubDetail', { clubId: selectedClub.id });
+            setSelectedClub(null);
+            
+            // 3. 백그라운드에서 멤버 추가 작업을 수행한다. (await를 사용하지 않음)
+            updateDoc(clubRef, {
+                members: arrayUnion(currentUser.uid)
+            }).catch(error => {
+                // 혹시 모를 오류는 콘솔에 기록
+                console.error("멤버 추가 오류:", error);
+            });
+
         } else {
             alert('비밀번호가 일치하지 않습니다.');
         }
@@ -1456,7 +1475,14 @@ const ClubListPage = ({ setCurrentPage }) => {
             <Modal isOpen={passwordModalOpen} onClose={() => { setPasswordModalOpen(false); setPassword(''); }}>
                 <h3 className="text-lg font-bold mb-4">{selectedClub?.name}</h3>
                 <p className="mb-4">이 모임은 비밀번호가 필요합니다.</p>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" className="w-full p-2 border rounded mb-4"/>
+                <input 
+                    type="password" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+                    placeholder="비밀번호" 
+                    className="w-full p-2 border rounded mb-4"
+                />
                 <button onClick={handlePasswordSubmit} className="w-full bg-[#00462A] text-white py-2 rounded">입장하기</button>
             </Modal>
 
