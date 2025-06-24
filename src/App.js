@@ -1406,6 +1406,8 @@ const ChatPage = ({ pageParam }) => {
 
 // App.js 파일에서 이 컴포넌트만 교체하세요.
 
+// App.js 파일에서 이 컴포넌트만 교체하세요.
+
 const ClubListPage = ({ setCurrentPage }) => {
     const [clubs, setClubs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1413,6 +1415,9 @@ const ClubListPage = ({ setCurrentPage }) => {
     const [selectedClub, setSelectedClub] = useState(null);
     const [password, setPassword] = useState('');
     const { currentUser } = useAuth();
+
+    // '내 모임'과 '전체 모임'을 구분하기 위한 상태 추가
+    const [activeTab, setActiveTab] = useState('내 모임');
 
     useEffect(() => {
         const q = query(collection(db, "clubs"), orderBy("createdAt", "desc"));
@@ -1423,38 +1428,33 @@ const ClubListPage = ({ setCurrentPage }) => {
         return () => unsubscribe();
     }, []);
 
-    // 모임 클릭 시 실행되는 함수 (로직 개선)
+    // 탭 선택에 따라 보여줄 모임 목록을 필터링
+    const myClubs = clubs.filter(club => club.members && club.members.includes(currentUser.uid));
+    const displayedClubs = activeTab === '내 모임' ? myClubs : clubs;
+
     const handleEnterClub = (club) => {
-        // 비밀번호가 없거나, 이미 멤버라면 즉시 입장
         if (!club.password || (club.members && club.members.includes(currentUser.uid))) {
             setCurrentPage('clubDetail', { clubId: club.id });
         } else {
-            // 비밀번호가 있고, 멤버가 아니라면 비밀번호 모달 열기
             setSelectedClub(club);
             setPasswordModalOpen(true);
         }
     };
 
-    // 비밀번호 입력 후 '입장하기' 버튼 클릭 시 실행되는 함수 (로직 수정)
     const handlePasswordSubmit = async () => {
         if (!selectedClub) return;
 
         if (password === selectedClub.password) {
             const clubRef = doc(db, 'clubs', selectedClub.id);
-            
-            // 1. 페이지를 먼저 이동시킨다.
             setCurrentPage('clubDetail', { clubId: selectedClub.id });
             
-            // 2. 모달을 닫고 상태를 초기화한다.
             setPasswordModalOpen(false);
             setPassword('');
             setSelectedClub(null);
             
-            // 3. 백그라운드에서 멤버 추가 작업을 수행한다. (await를 사용하지 않음)
             updateDoc(clubRef, {
                 members: arrayUnion(currentUser.uid)
             }).catch(error => {
-                // 혹시 모를 오류는 콘솔에 기록
                 console.error("멤버 추가 오류:", error);
             });
 
@@ -1485,12 +1485,30 @@ const ClubListPage = ({ setCurrentPage }) => {
                 />
                 <button onClick={handlePasswordSubmit} className="w-full bg-[#00462A] text-white py-2 rounded">입장하기</button>
             </Modal>
+            
+            <div className="flex justify-between items-center mb-4">
+                {/* '내 모임' / '전체 모임' 탭 버튼 */}
+                <div className="flex bg-gray-200 rounded-lg p-1">
+                    <button 
+                        onClick={() => setActiveTab('내 모임')}
+                        className={`px-4 py-1 text-sm font-semibold rounded-md ${activeTab === '내 모임' ? 'bg-white shadow' : 'text-gray-600'}`}
+                    >
+                        내 모임
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('전체 모임')}
+                        className={`px-4 py-1 text-sm font-semibold rounded-md ${activeTab === '전체 모임' ? 'bg-white shadow' : 'text-gray-600'}`}
+                    >
+                        전체 모임
+                    </button>
+                </div>
+                <button onClick={() => setCurrentPage('clubCreate')} className="bg-[#00462A] text-white font-bold py-2 px-3 rounded-lg hover:bg-[#003a22] flex items-center gap-1 text-sm">
+                    <PlusCircle size={16} /> 만들기
+                </button>
+            </div>
 
-            <button onClick={() => setCurrentPage('clubCreate')} className="w-full mb-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg flex items-center justify-center gap-2">
-                <PlusCircle size={20} /> 모임 만들기
-            </button>
             <div className="space-y-3">
-                {clubs.map(club => (
+                {displayedClubs.length > 0 ? displayedClubs.map(club => (
                     <div key={club.id} onClick={() => handleEnterClub(club)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
                         <img src={club.photoURL} alt={club.name} className="w-16 h-16 rounded-lg object-cover bg-gray-200 flex-shrink-0" />
                         <div className="flex-1 overflow-hidden">
@@ -1506,7 +1524,11 @@ const ClubListPage = ({ setCurrentPage }) => {
                             </div>
                         </div>
                     </div>
-                ))}
+                )) : (
+                    <div className="text-center text-gray-500 py-20">
+                        {activeTab === '내 모임' ? '가입한 모임이 없습니다.' : '생성된 모임이 없습니다.'}
+                    </div>
+                )}
             </div>
         </div>
     );
