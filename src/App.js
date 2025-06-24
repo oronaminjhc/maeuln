@@ -1162,17 +1162,21 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
         return () => { unsubscribeUser(); unsubscribePosts(); };
     }, [userId, currentUser.uid]);
 
-    const handleFollow = async () => {
-        const currentUserRef = doc(db, 'users', currentUser.uid);
-        const profileUserRef = doc(db, 'users', userId);
-        if(isFollowing){
-            await updateDoc(currentUserRef, { following: arrayRemove(userId) });
-            await updateDoc(profileUserRef, { followers: arrayRemove(currentUser.uid) });
-        } else {
-            await updateDoc(currentUserRef, { following: arrayUnion(userId) });
-            await updateDoc(profileUserRef, { followers: arrayUnion(currentUser.uid) });
-        }
-    };
+	const handleFollow = async () => {
+    // 이제 나의 문서만 수정합니다.
+    const currentUserRef = doc(db, 'users', currentUser.uid);
+    
+    // 상대방 문서를 수정하는 코드는 모두 제거합니다.
+    // const profileUserRef = doc(db, 'users', userId); 
+
+    	if (isFollowing) {
+        // 내 following 목록에서 상대방 ID 제거
+        await updateDoc(currentUserRef, { following: arrayRemove(userId) });
+   	 } else {
+        // 내 following 목록에 상대방 ID 추가
+        await updateDoc(currentUserRef, { following: arrayUnion(userId) });
+   	 }
+};
     
     const handleLogout = async () => {
         if (window.confirm('로그아웃 하시겠습니까?')) {
