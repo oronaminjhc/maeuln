@@ -862,10 +862,7 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
         
         try {
             const postSnap = await getDoc(postRef);
-            if (!postSnap.exists()) {
-                console.log("문서가 존재하지 않습니다.");
-                return;
-            }
+            if (!postSnap.exists()) return;
             const currentLikes = postSnap.data().likes || [];
             const liked = currentLikes.includes(currentUser.uid);
 
@@ -880,12 +877,11 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
     const handleBookmark = async () => {
         if (!post || !currentUser) return;
         const postRef = doc(db, 'posts', postId);
-        const postSnap = await getDoc(postRef);
-        if (!postSnap.exists()) return;
-        
-        const currentBookmarks = postSnap.data().bookmarks || [];
-        const bookmarked = currentBookmarks.includes(currentUser.uid);
         try {
+            const postSnap = await getDoc(postRef);
+            if (!postSnap.exists()) return;
+            const currentBookmarks = postSnap.data().bookmarks || [];
+            const bookmarked = currentBookmarks.includes(currentUser.uid);
             await updateDoc(postRef, {
                 bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
             });
@@ -912,11 +908,14 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
         }
     };
 
-    const handleCommentLike = async (commentId, currentLikes = []) => {
+    const handleCommentLike = async (commentId) => {
         if (!currentUser) return;
         const commentRef = doc(db, `posts/${postId}/comments`, commentId);
-        const liked = currentLikes.includes(currentUser.uid);
         try {
+            const commentSnap = await getDoc(commentRef);
+            if (!commentSnap.exists()) return;
+            const currentLikes = commentSnap.data().likes || [];
+            const liked = currentLikes.includes(currentUser.uid);
             await updateDoc(commentRef, {
                 likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
             });
@@ -1006,7 +1005,7 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
                                 </div>
                                 <div className="flex items-center mt-1 text-xs text-gray-500">
                                     <span>{timeSince(comment.createdAt)}</span>
-                                    <button onClick={() => handleCommentLike(comment.id, comment.likes)} className="ml-4 flex items-center hover:text-red-500">
+                                    <button onClick={() => handleCommentLike(comment.id)} className="ml-4 flex items-center hover:text-red-500">
                                       <Heart size={12} className={comment.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : ''} />
                                       <span className="ml-1">{comment.likes?.length || 0}</span>
                                     </button>
@@ -1422,19 +1421,13 @@ const ClubListPage = ({ setCurrentPage }) => {
         return () => unsubscribe();
     }, []);
 
-    const handleClubClick = (club) => {
-        if (!club.password) {
+    const handleEnterClub = (club) => {
+        if (!club.password || (club.members && club.members.includes(currentUser.uid))) {
             setCurrentPage('clubDetail', { clubId: club.id });
-            return;
+        } else {
+            setSelectedClub(club);
+            setPasswordModalOpen(true);
         }
-        
-        if (club.members && club.members.includes(currentUser.uid)) {
-            setCurrentPage('clubDetail', { clubId: club.id });
-            return;
-        }
-
-        setSelectedClub(club);
-        setPasswordModalOpen(true);
     };
 
     const handlePasswordSubmit = async () => {
@@ -1450,12 +1443,17 @@ const ClubListPage = ({ setCurrentPage }) => {
             alert('비밀번호가 일치하지 않습니다.');
         }
     };
+    
+    const handleCreatorClick = (e, creatorId) => {
+        e.stopPropagation();
+        setCurrentPage('userProfile', creatorId);
+    };
 
     if (loading) return <LoadingSpinner />;
 
     return (
         <div className="p-4">
-            <Modal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)}>
+            <Modal isOpen={passwordModalOpen} onClose={() => { setPasswordModalOpen(false); setPassword(''); }}>
                 <h3 className="text-lg font-bold mb-4">{selectedClub?.name}</h3>
                 <p className="mb-4">이 모임은 비밀번호가 필요합니다.</p>
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" className="w-full p-2 border rounded mb-4"/>
@@ -1467,14 +1465,18 @@ const ClubListPage = ({ setCurrentPage }) => {
             </button>
             <div className="space-y-3">
                 {clubs.map(club => (
-                    <div key={club.id} onClick={() => handleClubClick(club)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
-                        <img src={club.photoURL} alt={club.name} className="w-16 h-16 rounded-lg object-cover bg-gray-200" />
-                        <div className="flex-1">
+                    <div key={club.id} onClick={() => handleEnterClub(club)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
+                        <img src={club.photoURL} alt={club.name} className="w-16 h-16 rounded-lg object-cover bg-gray-200 flex-shrink-0" />
+                        <div className="flex-1 overflow-hidden">
                             <h3 className="font-bold text-lg">{club.name}</h3>
                             <p className="text-sm text-gray-500 truncate">{club.description}</p>
                             <div className="text-xs text-gray-400 mt-1 flex items-center">
                                 {club.password && <Lock size={12} className="mr-1" />}
                                 <span>멤버 {club.members?.length || 1}명</span>
+                                <span className="mx-1">·</span>
+                                <span onClick={(e) => handleCreatorClick(e, club.creatorId)} className="hover:underline">
+                                    {club.creatorName}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -1530,6 +1532,9 @@ const ClubCreatePage = ({ goBack }) => {
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
             setImageFile(file);
             setImagePreview(URL.createObjectURL(file));
         }
@@ -1571,7 +1576,7 @@ const ClubDetailPage = ({ pageParam, setCurrentPage, goBack }) => {
             if (doc.exists()) {
                 const clubData = { id: doc.id, ...doc.data() };
                 setClub(clubData);
-                fetchMembers(clubData.members);
+                if (clubData.members) fetchMembers(clubData.members);
             } else {
                 goBack();
             }
