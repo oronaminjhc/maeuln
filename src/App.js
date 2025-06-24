@@ -481,7 +481,7 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
                 if (itemToEdit?.imagePath) {
                     await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err));
                 }
-                const newImagePath = `news_images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
+ 		const newImagePath = `news_images/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
                 await uploadBytes(storageRef, imageFile);
                 imageUrl = await getDownloadURL(storageRef);
