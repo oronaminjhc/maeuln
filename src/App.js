@@ -1408,6 +1408,8 @@ const ChatPage = ({ pageParam }) => {
 
 // App.js 파일에서 이 컴포넌트만 교체하세요.
 
+// App.js 파일에서 이 컴포넌트만 교체하세요.
+
 const ClubListPage = ({ setCurrentPage }) => {
     const [clubs, setClubs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1416,7 +1418,6 @@ const ClubListPage = ({ setCurrentPage }) => {
     const [password, setPassword] = useState('');
     const { currentUser } = useAuth();
 
-    // '내 모임'과 '전체 모임'을 구분하기 위한 상태 추가
     const [activeTab, setActiveTab] = useState('내 모임');
 
     useEffect(() => {
@@ -1428,7 +1429,6 @@ const ClubListPage = ({ setCurrentPage }) => {
         return () => unsubscribe();
     }, []);
 
-    // 탭 선택에 따라 보여줄 모임 목록을 필터링
     const myClubs = clubs.filter(club => club.members && club.members.includes(currentUser.uid));
     const displayedClubs = activeTab === '내 모임' ? myClubs : clubs;
 
@@ -1441,27 +1441,34 @@ const ClubListPage = ({ setCurrentPage }) => {
         }
     };
 
+    // ▼▼▼ 이 함수를 아래의 새 코드로 교체합니다. ▼▼▼
     const handlePasswordSubmit = async () => {
-        if (!selectedClub) return;
+        if (!selectedClub || !password) return;
 
         if (password === selectedClub.password) {
             const clubRef = doc(db, 'clubs', selectedClub.id);
-            setCurrentPage('clubDetail', { clubId: selectedClub.id });
-            
-            setPasswordModalOpen(false);
-            setPassword('');
-            setSelectedClub(null);
-            
-            updateDoc(clubRef, {
-                members: arrayUnion(currentUser.uid)
-            }).catch(error => {
-                console.error("멤버 추가 오류:", error);
-            });
 
+            try {
+                // 1. Firestore에 멤버 추가를 먼저 요청하고 '기다린다'.
+                await updateDoc(clubRef, {
+                    members: arrayUnion(currentUser.uid)
+                });
+                
+                // 2. 멤버 추가가 성공하면 다음 작업을 수행한다.
+                setCurrentPage('clubDetail', { clubId: selectedClub.id });
+                setPasswordModalOpen(false);
+                setPassword('');
+                setSelectedClub(null);
+
+            } catch (error) {
+                console.error("멤버 추가 오류:", error);
+                alert("모임 입장에 실패했습니다. 다시 시도해주세요.");
+            }
         } else {
             alert('비밀번호가 일치하지 않습니다.');
         }
     };
+    // ▲▲▲ 여기까지 교체 ▲▲▲
     
     const handleCreatorClick = (e, creatorId) => {
         e.stopPropagation();
@@ -1487,7 +1494,6 @@ const ClubListPage = ({ setCurrentPage }) => {
             </Modal>
             
             <div className="flex justify-between items-center mb-4">
-                {/* '내 모임' / '전체 모임' 탭 버튼 */}
                 <div className="flex bg-gray-200 rounded-lg p-1">
                     <button 
                         onClick={() => setActiveTab('내 모임')}
