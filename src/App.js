@@ -41,7 +41,7 @@ import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, Me
 // ★ 관리자 UID 지정
 const ADMIN_UID = 'wvXNcSqXMsaiqOCgBvU7A4pJoFv1';
 
-// --- Firebase 설정 ---
+// --- Firebase 설정 ---주소 수정 확인
 const firebaseConfig = {
     apiKey: "AIzaSyAd7ns6wCL72P7X5_qZxX23sBxdkMhWAeg",
     authDomain: "maeulbung.firebaseapp.com",
