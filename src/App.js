@@ -404,6 +404,15 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
     const isAdmin = currentUser.uid === ADMIN_UID;
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
+    
+    // --- 필터링 기능 추가 ---
+    const [activeTag, setActiveTag] = useState('전체');
+    const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
+
+    // 선택된 태그에 따라 소식 목록을 필터링합니다.
+    const filteredNews = activeTag === '전체'
+        ? buanNews
+        : buanNews.filter(news => news.tags && news.tags.includes(activeTag));
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
     return (
@@ -413,7 +422,19 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
                     <PlusCircle size={20} /> 소식 글쓰기
                 </button>
             )}
-
+            <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {tags.map(tag => (
+                    <button
+                        key={tag}
+                        onClick={() => setActiveTag(tag)}
+                        className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${
+                            activeTag === tag ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'
+                        }`}
+                    >
+                        {tag}
+                    </button>
+                ))}
+            </div>
             <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
                 {selectedNews && (
                     <div>
