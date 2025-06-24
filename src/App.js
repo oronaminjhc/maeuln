@@ -859,10 +859,8 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
     const handleLike = async () => {
         if (!post || !currentUser) return;
         const postRef = doc(db, 'posts', postId);
-        const currentPost = (await getDoc(postRef)).data();
-        const liked = currentPost.likes?.includes(currentUser.uid);
-
-               try {
+        
+        try {
             const postSnap = await getDoc(postRef);
             if (!postSnap.exists()) {
                 console.log("문서가 존재하지 않습니다.");
@@ -876,6 +874,23 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
             });
         } catch (e) {
             console.error("Error updating like: ", e);
+        }
+    };
+
+    const handleBookmark = async () => {
+        if (!post || !currentUser) return;
+        const postRef = doc(db, 'posts', postId);
+        const postSnap = await getDoc(postRef);
+        if (!postSnap.exists()) return;
+        
+        const currentBookmarks = postSnap.data().bookmarks || [];
+        const bookmarked = currentBookmarks.includes(currentUser.uid);
+        try {
+            await updateDoc(postRef, {
+                bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+            });
+        } catch(e) {
+            console.error("Error updating bookmark:", e);
         }
     };
 
@@ -1707,22 +1722,37 @@ function AppContent() {
 
     const handleLikeNews = async (newsItem) => {
         if (!currentUser) return;
+        
         const userRef = doc(db, 'users', currentUser.uid);
         const eventsRef = collection(db, 'users', currentUser.uid, 'events');
-        const isLiked = (await getDoc(userRef)).data().likedNews?.includes(newsItem.id);
+        
         try {
+            const userSnap = await getDoc(userRef);
+            const currentLikedNews = userSnap.data()?.likedNews || [];
+            const isLiked = currentLikedNews.includes(newsItem.id);
+
             if (isLiked) {
                 await updateDoc(userRef, { likedNews: arrayRemove(newsItem.id) });
                 const q = query(eventsRef, where("newsId", "==", newsItem.id));
                 const querySnapshot = await getDocs(q);
-                querySnapshot.forEach(async (docSnap) => await deleteDoc(docSnap.ref));
+                querySnapshot.forEach(async (docSnap) => {
+                    await deleteDoc(docSnap.ref);
+                });
             } else {
                 await updateDoc(userRef, { likedNews: arrayUnion(newsItem.id) });
                 if (newsItem.date) {
-                    await addDoc(eventsRef, { title: newsItem.title, date: newsItem.date, createdAt: Timestamp.now(), type: 'news', newsId: newsItem.id });
+                    await addDoc(eventsRef, {
+                        title: newsItem.title,
+                        date: newsItem.date,
+                        createdAt: Timestamp.now(),
+                        type: 'news',
+                        newsId: newsItem.id
+                    });
                 }
             }
-        } catch (error) { console.error("Error liking news:", error); }
+        } catch (error) {
+            console.error("Error liking news:", error);
+        }
     };
     
     const handleDeleteNews = async (newsId, imagePath) => {
