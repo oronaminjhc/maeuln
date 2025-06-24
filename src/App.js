@@ -46,7 +46,7 @@ const firebaseConfig = {
     apiKey: "AIzaSyAd7ns6wCL72P7X5_qZxX23sBxdkMhWAeg",
     authDomain: "maeulbung.firebaseapp.com",
     projectId: "maeulbung",
-    storageBucket: "maeulbung.appspot.com",
+    storageBucket: "maeulbung.firebasestorage.app", 
     messagingSenderId: "463888320744",
     appId: "1:463888320744:web:0f773fed3428d36895a15d",
     measurementId: "G-WNRFBZX0HE"
