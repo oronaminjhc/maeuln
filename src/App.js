@@ -862,25 +862,20 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
         const currentPost = (await getDoc(postRef)).data();
         const liked = currentPost.likes?.includes(currentUser.uid);
 
-        try {
+               try {
+            const postSnap = await getDoc(postRef);
+            if (!postSnap.exists()) {
+                console.log("문서가 존재하지 않습니다.");
+                return;
+            }
+            const currentLikes = postSnap.data().likes || [];
+            const liked = currentLikes.includes(currentUser.uid);
+
             await updateDoc(postRef, {
                 likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
             });
         } catch (e) {
             console.error("Error updating like: ", e);
-        }
-    };
-
-    const handleBookmark = async () => {
-        if (!post || !currentUser) return;
-        const postRef = doc(db, 'posts', postId);
-        const bookmarked = post.bookmarks?.includes(currentUser.uid);
-        try {
-            await updateDoc(postRef, {
-                bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
-            });
-        } catch(e) {
-            console.error("Error updating bookmark:", e);
         }
     };
 
