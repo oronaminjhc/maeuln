@@ -405,7 +405,7 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
     
-    // --- 필터링 기능 추가 ---
+    // --- 필터링 기능 ---
     const [activeTag, setActiveTag] = useState('전체');
     const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
 
@@ -413,6 +413,7 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
     const filteredNews = activeTag === '전체'
         ? buanNews
         : buanNews.filter(news => news.tags && news.tags.includes(activeTag));
+
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
     return (
@@ -445,10 +446,17 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
             </Modal>
 
             <div className="space-y-4">
-                {buanNews.map((news) => (
-                    <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
-                ))}
-                {buanNews.length === 0 && <div className="text-center text-gray-500 py-10 p-8 bg-gray-100 rounded-lg">등록된 소식이 없습니다.</div>}
+                {/* ▼▼▼ 여기를 'filteredNews'로 수정했습니다. ▼▼▼ */}
+                {filteredNews.length > 0 ? (
+                    filteredNews.map((news) => (
+                        <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
+                    ))
+                ) : (
+                    <div className="text-center text-gray-500 py-10 p-8 bg-gray-100 rounded-lg">
+                        {activeTag === '전체' ? '등록된 소식이 없습니다.' : `선택한 태그에 해당하는 소식이 없습니다.`}
+                    </div>
+                )}
+                {/* ▲▲▲ 그리고 목록이 없을 때 표시될 메시지도 추가했습니다. ▲▲▲ */}
             </div>
         </div>
     );
