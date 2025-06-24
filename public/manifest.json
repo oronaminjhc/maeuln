@@ -18,11 +18,8 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": "maeuln.net",
+  "start_url": ".",
   "display": "standalone",
   "theme_color": "#000000",
-  "background_color": "#ffffff",
-  "display_override": [
-    "window-controls-overlay"
-  ]
+  "background_color": "#ffffff"
 }

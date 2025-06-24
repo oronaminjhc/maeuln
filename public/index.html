@@ -2,17 +2,21 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
+    <!-- 1. 파비콘 (브라우저 탭 아이콘) -->
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#00462A" />
     
+    <!-- 2. 웹사이트 제목 (브라우저 탭 제목) -->
     <title>마을엔 부안</title>
 
+    <!-- 3. 웹사이트 설명 (구글 검색 결과 등) -->
     <meta
       name="description"
       content="한국형 지역 기반 SNS의 시작, 마을엔"
     />
 
+    <!-- 4. 소셜 미디어 미리보기를 위한 Open Graph 태그 -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://www.maeuln.net/">
     <meta property="og:title" content="마을엔 부안">
@@ -23,34 +27,18 @@
     <meta property="og:site_name" content="마을엔 부안">
     <meta property="og:locale" content="ko_KR">
     
+    <!-- 5. 트위터 카드용 태그 (선택사항이지만 권장) -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="마을엔 부안">
     <meta name="twitter:description" content="한국형 지역 기반 SNS의 시작, 마을엔">
     <meta name="twitter:image" content="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn">
 
+    <!-- Create React App 기본 파일 링크 -->
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-
-    <!-- =================================================================== -->
-    <!-- PWA: 서비스 워커(sw.js)를 등록하는 스크립트입니다. (이 부분을 추가) -->
-    <!-- =================================================================== -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('서비스 워커가 성공적으로 등록되었습니다.', registration);
-            })
-            .catch(error => {
-              console.log('서비스 워커 등록에 실패했습니다.', error);
-            });
-        });
-      }
-    </script>
-
   </body>
 </html>
