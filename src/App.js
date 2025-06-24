@@ -1162,20 +1162,25 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
         return () => { unsubscribeUser(); unsubscribePosts(); };
     }, [userId, currentUser.uid]);
 
-	const handleFollow = async () => {
-    // 이제 나의 문서만 수정합니다.
+const handleFollow = async () => {
+    // 나의 문서와 상대방의 문서를 모두 참조
     const currentUserRef = doc(db, 'users', currentUser.uid);
-    
-    // 상대방 문서를 수정하는 코드는 모두 제거합니다.
-    // const profileUserRef = doc(db, 'users', userId); 
+    const profileUserRef = doc(db, 'users', userId);
 
-    	if (isFollowing) {
-        // 내 following 목록에서 상대방 ID 제거
-        await updateDoc(currentUserRef, { following: arrayRemove(userId) });
-   	 } else {
-        // 내 following 목록에 상대방 ID 추가
-        await updateDoc(currentUserRef, { following: arrayUnion(userId) });
-   	 }
+    try {
+        if (isFollowing) {
+            // 언팔로우: 내 following 목록과 상대 followers 목록에서 서로의 ID를 제거
+            await updateDoc(currentUserRef, { following: arrayRemove(userId) });
+            await updateDoc(profileUserRef, { followers: arrayRemove(currentUser.uid) });
+        } else {
+            // 팔로우: 내 following 목록과 상대 followers 목록에 서로의 ID를 추가
+            await updateDoc(currentUserRef, { following: arrayUnion(userId) });
+            await updateDoc(profileUserRef, { followers: arrayUnion(currentUser.uid) });
+        }
+    } catch (error) {
+        console.error("팔로우 처리 중 오류:", error);
+        alert("팔로우 처리 중 오류가 발생했습니다.");
+    }
 };
     
     const handleLogout = async () => {
