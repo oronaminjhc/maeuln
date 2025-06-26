@@ -113,8 +113,12 @@ const categoryStyles = {
 };
 const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
 const timeSince = (date) => {
-    if (!date) return '';
-    const seconds = Math.floor((new Date() - date.toDate()) / 1000);
+    if (!date || !date.toDate) return ''; // date가 없거나 toDate 함수가 없으면 바로 종료
+
+    // Firestore의 Timestamp 객체를 자바스크립트의 Date 객체로 먼저 변환합니다.
+    const jsDate = date.toDate();
+
+    const seconds = Math.floor((new Date() - jsDate) / 1000);
     if (seconds < 60) return `방금 전`;
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}분 전`;
@@ -122,7 +126,9 @@ const timeSince = (date) => {
     if (hours < 24) return `${hours}시간 전`;
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days}일 전`;
-    return date.toLocaleDateString('ko-KR');
+
+    // 이제 jsDate는 표준 Date 객체이므로 .toLocaleDateString()을 안전하게 사용할 수 있습니다.
+    return jsDate.toLocaleDateString('ko-KR');
 };
 const Modal = ({ isOpen, onClose, children }) => {
     if (!isOpen) return null;
