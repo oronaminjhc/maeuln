@@ -1,12 +1,15 @@
+// --- START OF FILE App.js ---
+
 import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
     onAuthStateChanged,
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
     signOut,
-    updateProfile
+    updateProfile,
+    OAuthProvider,
+    signInWithPopup
 } from 'firebase/auth';
 import {
     getFirestore,
@@ -26,7 +29,8 @@ import {
     orderBy,
     limit,
     deleteDoc,
-    getDocs
+    getDocs,
+    writeBatch
 } from 'firebase/firestore';
 import {
     getStorage,
@@ -37,19 +41,21 @@ import {
 } from 'firebase/storage';
 import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp, UserCircle, Lock, Edit2 } from 'lucide-react';
 
+// ★★★ 서비스 로직 import (이 파일은 별도로 존재해야 합니다)
+import { fetchRegions, fetchCities } from './services/region.service';
 
 // ★ 관리자 UID 지정
 const ADMIN_UID = 'wvXNcSqXMsaiqOCgBvU7A4pJoFv1';
 
 // --- Firebase 설정 ---
 const firebaseConfig = {
-    apiKey: "AIzaSyAd7ns6wCL72P7X5_qZxX23sBxdkMhWAeg",
-    authDomain: "maeulbung.firebaseapp.com",
-    projectId: "maeulbung",
-    storageBucket: "maeulbung.firebasestorage.app", 
-    messagingSenderId: "463888320744",
-    appId: "1:463888320744:web:0f773fed3428d36895a15d",
-    measurementId: "G-WNRFBZX0HE"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
@@ -57,10 +63,12 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// --- 인증 Context ---
+// =================================================================
+// ▼▼▼ 인증 Context ▼▼▼
+// =================================================================
 const AuthContext = createContext();
 
-export const AuthProvider = ({ children }) => {
+const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -69,9 +77,14 @@ export const AuthProvider = ({ children }) => {
             if (user) {
                 const userRef = doc(db, "users", user.uid);
                 const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
-                    const userData = userSnap.exists() ? userSnap.data() : {};
-                    const finalUser = { ...user, ...userData, photoURL: userData.photoURL || user.photoURL };
-                    setCurrentUser(finalUser);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        const finalUser = { ...user, ...userData, photoURL: userData.photoURL || user.photoURL };
+                        setCurrentUser(finalUser);
+                    } else {
+                        // 최초 로그인 시 Firestore에 문서가 아직 없는 상태
+                        setCurrentUser(user);
+                    }
                     setLoading(false);
                 }, (error) => {
                     console.error("User doc snapshot error:", error);
@@ -89,35 +102,43 @@ export const AuthProvider = ({ children }) => {
 
     const value = { currentUser, loading };
 
-    return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
+const useAuth = () => {
     return useContext(AuthContext);
 };
 
 
-// --- 로고, 헬퍼, 공용 컴포넌트 ---
+// =================================================================
+// ▼▼▼ 로고, 헬퍼, 공용 컴포넌트 ▼▼▼
+// =================================================================
 const Logo = ({ size = 28 }) => (
     <img src="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" alt="Logo" width={size} height={size} style={{ objectFit: 'contain' }}/>
 );
+
 const categoryStyles = {
     '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
     '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' },
     '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' },
     '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' },
     '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' },
-    '부안맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
+    '마을맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
     '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
     '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
 };
-const getCategoryStyle = (category) => categoryStyles[category] || categoryStyles['기타'];
+
+const getCategoryStyle = (category, city = '') => {
+    const dynamicCategoryName = `${city}맘`;
+    if (category === dynamicCategoryName) {
+        return categoryStyles['마을맘'];
+    }
+    return categoryStyles[category] || categoryStyles['기타'];
+};
+
 const timeSince = (date) => {
-    if (!date || !date.toDate) return ''; // date가 없거나 toDate 함수가 없으면 바로 종료
-
-    // Firestore의 Timestamp 객체를 자바스크립트의 Date 객체로 먼저 변환합니다.
+    if (!date || typeof date.toDate !== 'function') return '';
     const jsDate = date.toDate();
-
     const seconds = Math.floor((new Date() - jsDate) / 1000);
     if (seconds < 60) return `방금 전`;
     const minutes = Math.floor(seconds / 60);
@@ -126,16 +147,15 @@ const timeSince = (date) => {
     if (hours < 24) return `${hours}시간 전`;
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days}일 전`;
-
-    // 이제 jsDate는 표준 Date 객체이므로 .toLocaleDateString()을 안전하게 사용할 수 있습니다.
     return jsDate.toLocaleDateString('ko-KR');
 };
+
 const Modal = ({ isOpen, onClose, children }) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
+                <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10">
                     <div className="w-6"></div>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
                 </div>
@@ -144,22 +164,25 @@ const Modal = ({ isOpen, onClose, children }) => {
         </div>
     );
 };
+
 const LoadingSpinner = () => (
     <div className="flex justify-center items-center h-full pt-20">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-[#00462A]"></div>
     </div>
 );
-const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked }) => {
+
+const NewsCard = ({ news, isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked }) => {
+    const navigate = useNavigate();
     return (
         <div className="flex-shrink-0 w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
             {news.imageUrl && <img src={news.imageUrl} alt={news.title} className="w-full h-48 object-cover" onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image' }} />}
             {isAdmin && (
                 <div className="absolute top-2 left-2 flex gap-2 z-10">
-                    <button onClick={() => setCurrentPage('editNews', news)} className="bg-white/70 p-1.5 rounded-full text-blue-600 shadow"><Pencil size={20} /></button>
-                    <button onClick={() => handleDeleteNews(news.id, news.imagePath)} className="bg-white/70 p-1.5 rounded-full text-red-600 shadow"><Trash2 size={20} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); navigate(`/news/edit/${news.id}`, { state: { itemToEdit: news } }); }} className="bg-white/70 p-1.5 rounded-full text-blue-600 shadow"><Pencil size={20} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteNews(news.id, news.imagePath); }} className="bg-white/70 p-1.5 rounded-full text-red-600 shadow"><Trash2 size={20} /></button>
                 </div>
             )}
-             <button onClick={() => handleLikeNews(news)} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
+             <button onClick={(e) => { e.stopPropagation(); handleLikeNews(news); }} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
                 <Heart size={20} className={isLiked ? "text-red-500 fill-current" : "text-gray-500"} />
             </button>
             <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
@@ -176,6 +199,7 @@ const NewsCard = ({ news, isAdmin, openDetailModal, setCurrentPage, handleDelete
         </div>
     );
 };
+
 const Calendar = ({events = {}, onDateClick = () => {}}) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
@@ -211,45 +235,26 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
     );
 };
 
+
 // =================================================================
 // ▼▼▼ 페이지 컴포넌트들 ▼▼▼
 // =================================================================
 
-const AuthPage = () => {
-    const [isLoginMode, setIsLoginMode] = useState(true);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [nickname, setNickname] = useState('');
-    const [error, setError] = useState('');
+const StartPage = () => {
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    const handleAuthAction = async (e) => {
-        e.preventDefault();
+    const handleKakaoLogin = async () => {
         setLoading(true);
         setError('');
         try {
-            if (isLoginMode) {
-                await signInWithEmailAndPassword(auth, email, password);
-            } else {
-                if (nickname.length < 2) throw new Error('닉네임은 2자 이상 입력해주세요.');
-                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-                const user = userCredential.user;
-                await updateProfile(user, { displayName: nickname });
-                const userRef = doc(db, "users", user.uid);
-                await setDoc(userRef, {
-                    displayName: nickname, email: user.email, createdAt: Timestamp.now(), followers: [], following: [], likedNews: []
-                });
-            }
-        } catch (err) {
-            console.error("Auth Error:", err);
-            switch (err.code) {
-                case 'auth/operation-not-allowed': setError("Firebase 콘솔에서 이메일/비밀번호 로그인을 활성화해주세요."); break;
-                case 'auth/email-already-in-use': setError('이미 사용 중인 이메일입니다.'); break;
-                case 'auth/invalid-credential': case 'auth/wrong-password': case 'auth/user-not-found': setError('이메일 또는 비밀번호가 잘못되었습니다.'); break;
-                default:
-                    if (err.message === '닉네임은 2자 이상 입력해주세요.') setError(err.message);
-                    else setError('오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-                    break;
+            const provider = new OAuthProvider('kakao.com');
+            provider.setCustomParameters({ prompt: 'select_account' });
+            await signInWithPopup(auth, provider);
+        } catch (error) {
+            console.error("Kakao Login Error:", error);
+            if (error.code !== 'auth/popup-closed-by-user') {
+                 setError("카카오 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.");
             }
         } finally {
             setLoading(false);
@@ -260,31 +265,213 @@ const AuthPage = () => {
         <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4">
             <div className="text-center mb-8 flex flex-col items-center">
                 <Logo size={80} />
-                <h1 className="text-3xl font-bold text-gray-800 mt-4">마을엔 부안</h1>
-                <p className="text-gray-600 mt-2 text-center">지금 우리 마을에서 무슨 일이?<br/>'마을엔'에서 확인하세요!</p>
+                <h1 className="text-3xl font-bold text-gray-800 mt-4">마을N</h1>
+                <p className="text-gray-600 mt-2 text-center">전국 모든 마을의 이야기<br/>'마을N'에서 확인하세요!</p>
             </div>
             <div className="w-full max-w-xs">
-                <form onSubmit={handleAuthAction} className="space-y-4">
-                    {!isLoginMode && (<input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="닉네임 (2자 이상)" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]" />)}
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일 주소" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
-                    {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-                    <button type="submit" disabled={loading} className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400">{loading ? '처리 중...' : (isLoginMode ? '로그인' : '회원가입')}</button>
-                </form>
-                <button onClick={() => setIsLoginMode(!isLoginMode)} className="w-full mt-4 text-sm text-gray-600 hover:text-[#00462A]">{isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}</button>
+                {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
+                <button onClick={handleKakaoLogin} disabled={loading} className="w-full bg-[#FEE500] text-[#3C1E1E] font-bold py-3 px-4 rounded-lg flex items-center justify-center shadow-lg hover:bg-yellow-400 transition-colors disabled:bg-gray-400">
+                    <svg className="w-6 h-6 mr-2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c.89 0 1.75-.12 2.56-.34l-1.39 4.34c-.08.24.16.45.4.39l4.9-3.06c1.8-1.48 2.53-3.88 2.53-6.33C22 6.48 17.52 2 12 2z" fill="#3C1E1E"/></svg>
+                    {loading ? "로그인 중..." : "카카오로 3초만에 시작하기"}
+                </button>
             </div>
         </div>
     );
 };
 
-const HomePage = ({ setCurrentPage, posts, buanNews, handleDeleteNews, handleLikeNews, likedNews, followingPosts, userEvents }) => {
+const RegionSetupPage = () => {
     const { currentUser } = useAuth();
-    const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
+    const [regions, setRegions] = useState([]);
+    const [cities, setCities] = useState([]);
+    const [selectedRegion, setSelectedRegion] = useState({ code: '', name: '' });
+    const [selectedCity, setSelectedCity] = useState({ code: '', name: '' });
+    const [loading, setLoading] = useState(false);
+    const [apiLoading, setApiLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        const loadInitialRegions = async () => {
+            setApiLoading(true);
+            const regionData = await fetchRegions();
+            setRegions(regionData);
+            setApiLoading(false);
+        };
+        loadInitialRegions();
+    }, []);
+
+    useEffect(() => {
+        if (selectedRegion.code) {
+            const loadCities = async () => {
+                setApiLoading(true);
+                setCities([]);
+                setSelectedCity({ code: '', name: '' });
+                const cityData = await fetchCities(selectedRegion.code);
+                setCities(cityData);
+                setApiLoading(false);
+            };
+            loadCities();
+        } else {
+            setCities([]);
+        }
+    }, [selectedRegion]);
+
+    const handleRegionChange = (e) => {
+        const selectedCode = e.target.value;
+        const selectedOption = regions.find(r => r.code === selectedCode);
+        setSelectedRegion(selectedOption || { code: '', name: '' });
+    };
+
+    const handleCityChange = (e) => {
+        const selectedName = e.target.value;
+        const selectedOption = cities.find(c => c.name === selectedName);
+        setSelectedCity(selectedOption || { code: '', name: '' });
+    };
+
+    const handleSaveRegion = async () => {
+        if (!selectedRegion.name || !selectedCity.name) {
+            setError('거주 지역을 모두 선택해주세요.');
+            return;
+        }
+        setLoading(true);
+        setError('');
+        try {
+            const userRef = doc(db, "users", currentUser.uid);
+            await setDoc(userRef, {
+                displayName: currentUser.displayName,
+                email: currentUser.email,
+                photoURL: currentUser.photoURL,
+                region: selectedRegion.name,
+                city: selectedCity.name,
+                town: '', 
+                createdAt: Timestamp.now(),
+                followers: [],
+                following: [],
+                likedNews: []
+            }, { merge: true }); 
+        } catch (e) {
+            console.error("Region save error:", e);
+            setError("저장에 실패했습니다. 다시 시도해주세요.");
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col items-center justify-center h-screen bg-white p-4">
+            <div className="text-center mb-8">
+                <h1 className="text-2xl font-bold text-gray-800">환영합니다!</h1>
+                <p className="text-gray-600 mt-2">서비스 이용을 위해<br />거주 지역을 설정해주세요.</p>
+            </div>
+            {apiLoading && !regions.length ? <LoadingSpinner/> : (
+                <div className="w-full max-w-xs space-y-4">
+                    <select value={selectedRegion.code} onChange={handleRegionChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]">
+                        <option value="">시/도 선택</option>
+                        {regions.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}
+                    </select>
+                    <select value={selectedCity.name} onChange={handleCityChange} disabled={!selectedRegion.code || apiLoading} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200">
+                        <option value="">시/군/구 선택</option>
+                        {apiLoading && selectedRegion.code ? <option>불러오는 중...</option> : cities.map(c => <option key={c.code} value={c.name}>{c.name}</option>)}
+                    </select>
+                    {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                    <button onClick={handleSaveRegion} disabled={loading || !selectedCity.name} className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400">
+                        {loading ? "저장 중..." : "마을N 시작하기"}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const HomePage = () => {
+    const { currentUser } = useAuth();
+    const navigate = useNavigate();
+    const [posts, setPosts] = useState([]);
+    const [buanNews, setBuanNews] = useState([]);
+    const [followingPosts, setFollowingPosts] = useState([]);
+    const [userEvents, setUserEvents] = useState({});
+    const [likedNews, setLikedNews] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const userCity = currentUser?.city;
+    const isAdmin = currentUser.uid === ADMIN_UID;
+    
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
-    const isAdmin = currentUser.uid === ADMIN_UID;
-
+    
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
+
+    useEffect(() => {
+        if (!currentUser?.city) return;
+        setLoading(true);
+
+        const unsubscribes = [];
+
+        setLikedNews(currentUser.likedNews || []);
+        
+        // 지역 기반 게시물
+        unsubscribes.push(onSnapshot(query(collection(db, "posts"), where("city", "==", currentUser.city), orderBy("createdAt", "desc"), limit(50)), 
+            (snapshot) => setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+        ));
+
+        // 지역 기반 소식
+        unsubscribes.push(onSnapshot(query(collection(db, "news"), where("city", "==", currentUser.city), orderBy("createdAt", "desc")), 
+            (snapshot) => setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+        ));
+
+        // 이벤트
+        unsubscribes.push(onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
+            const eventsData = {};
+            snapshot.docs.forEach(doc => {
+                const event = { id: doc.id, ...doc.data() };
+                if (!eventsData[event.date]) eventsData[event.date] = [];
+                eventsData[event.date].push(event);
+            });
+            setUserEvents(eventsData);
+        }));
+
+        // 팔로잉 게시물
+        if (currentUser.following?.length > 0) {
+            const followingLimited = currentUser.following.slice(0, 10);
+            unsubscribes.push(onSnapshot(query(collection(db, "posts"), where('authorId', 'in', followingLimited), orderBy("createdAt", "desc"), limit(10)), 
+                (snapshot) => setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+            ));
+        } else {
+             setFollowingPosts([]);
+        }
+
+        setLoading(false);
+        return () => unsubscribes.forEach(unsub => unsub());
+
+    }, [currentUser]);
+    
+    const handleLikeNews = async (newsItem) => {
+        // 이 로직은 여러 곳에서 쓰이므로 App.js 최상위나 context로 옮기는 것이 더 효율적일 수 있습니다.
+        // 여기서는 페이지 단위로 구현합니다.
+        const userRef = doc(db, 'users', currentUser.uid);
+        try {
+            if (likedNews.includes(newsItem.id)) {
+                await updateDoc(userRef, { likedNews: arrayRemove(newsItem.id) });
+            } else {
+                await updateDoc(userRef, { likedNews: arrayUnion(newsItem.id) });
+            }
+        } catch (error) {
+            console.error("Error liking news:", error);
+        }
+    };
+    
+    const handleDeleteNews = async (newsId, imagePath) => {
+        if(!isAdmin) return;
+        if (window.confirm("정말로 이 소식을 삭제하시겠습니까?")) {
+            try {
+                if (imagePath) await deleteObject(ref(storage, imagePath));
+                await deleteDoc(doc(db, 'news', newsId));
+                alert("소식이 삭제되었습니다.");
+            } catch (error) { alert(`소식 삭제 중 오류: ${error.message}`); }
+        }
+    };
+
+    if(loading) return <LoadingSpinner />;
+
+    const popularPosts = [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3);
 
     return (
         <div className="p-4 space-y-8">
@@ -299,14 +486,14 @@ const HomePage = ({ setCurrentPage, posts, buanNews, handleDeleteNews, handleLik
             
             <section>
                 <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">지금 부안에서는</h2>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('news'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
+                    <h2 className="text-lg font-bold">지금 {userCity}에서는</h2>
+                    <Link to="/news" className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></Link>
                 </div>
                 <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {buanNews.length > 0 ? (
                         buanNews.map((news) => (
                             <div key={news.id} className="w-4/5 md:w-3/5 flex-shrink-0">
-                                <NewsCard {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
+                                <NewsCard {...{news, isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
                             </div>
                         ))
                     ) : (
@@ -317,22 +504,22 @@ const HomePage = ({ setCurrentPage, posts, buanNews, handleDeleteNews, handleLik
 
             <section>
                 <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">부안 달력</h2>
-                    <a href="#" onClick={(e) => {e.preventDefault(); setCurrentPage('calendar');}} className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></a>
+                    <h2 className="text-lg font-bold">{userCity} 달력</h2>
+                    <Link to="/calendar" className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></Link>
                 </div>
-                <Calendar events={userEvents} onDateClick={(date) => setCurrentPage('calendar', { date })}/>
+                <Calendar events={userEvents} onDateClick={(date) => navigate('/calendar', { state: { date } })}/>
             </section>
 
             <section>
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-bold">지금 인기있는 글</h2>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('board'); }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></a>
+                    <Link to="/board" className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></Link>
                 </div>
                 <div className="space-y-3">
                     {popularPosts.length > 0 ? (popularPosts.map(post => {
-                        const style = getCategoryStyle(post.category);
+                        const style = getCategoryStyle(post.category, userCity);
                         return (
-                            <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
+                            <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
                                 <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
                                 <p className="truncate flex-1">{post.title}</p>
                                 <div className="flex items-center text-xs text-gray-400 gap-2">
@@ -351,9 +538,9 @@ const HomePage = ({ setCurrentPage, posts, buanNews, handleDeleteNews, handleLik
                 </div>
                 <div className="space-y-3">
                     {followingPosts.length > 0 ? (followingPosts.map(post => {
-                        const style = getCategoryStyle(post.category);
+                        const style = getCategoryStyle(post.category, userCity);
                         return (
-                            <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                            <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
                                     <h3 className="font-bold text-md truncate flex-1">{post.title}</h3>
@@ -361,7 +548,7 @@ const HomePage = ({ setCurrentPage, posts, buanNews, handleDeleteNews, handleLik
                                 <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
                                 <div className="flex justify-between items-center text-xs text-gray-500">
                                     <div>
-                                        <span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
+                                        <span onClick={(e) => { e.stopPropagation(); navigate(`/profile/${post.authorId}`); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
                                         <span className="mx-1">·</span>
                                         <span>{timeSince(post.createdAt)}</span>
                                     </div>
@@ -385,23 +572,68 @@ const HomePage = ({ setCurrentPage, posts, buanNews, handleDeleteNews, handleLik
     );
 };
 
-
-const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, likedNews }) => {
+const NewsPage = () => {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const isAdmin = currentUser.uid === ADMIN_UID;
+    const [buanNews, setBuanNews] = useState([]);
+    const [likedNews, setLikedNews] = useState(currentUser.likedNews || []);
+    const [loading, setLoading] = useState(true);
+    
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
     const [activeTag, setActiveTag] = useState('전체');
     const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
+
+    useEffect(() => {
+        if (!currentUser.city) return;
+        setLoading(true);
+        const q = query(collection(db, "news"), where("city", "==", currentUser.city), orderBy("createdAt", "desc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [currentUser.city]);
+
+    const handleLikeNews = async (newsItem) => {
+        const userRef = doc(db, 'users', currentUser.uid);
+        const isLiked = likedNews.includes(newsItem.id);
+        const newLikedNews = isLiked 
+            ? likedNews.filter(id => id !== newsItem.id)
+            : [...likedNews, newsItem.id];
+        setLikedNews(newLikedNews); // Optimistic update
+
+        try {
+            await updateDoc(userRef, { likedNews: newLikedNews });
+        } catch (error) {
+            console.error("Error liking news:", error);
+            setLikedNews(likedNews); // Revert on error
+        }
+    };
+
+    const handleDeleteNews = async (newsId, imagePath) => {
+        if (!isAdmin) return;
+        if (window.confirm("정말로 이 소식을 삭제하시겠습니까?")) {
+            try {
+                if (imagePath) await deleteObject(ref(storage, imagePath));
+                await deleteDoc(doc(db, 'news', newsId));
+                alert("소식이 삭제되었습니다.");
+            } catch (error) { alert(`소식 삭제 중 오류: ${error.message}`); }
+        }
+    };
+
     const filteredNews = activeTag === '전체'
         ? buanNews
         : buanNews.filter(news => news.tags && news.tags.includes(activeTag));
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
+    if(loading) return <LoadingSpinner />;
+
     return (
         <div className="p-4">
             {isAdmin && (
-                <button onClick={() => setCurrentPage('writeNews')} className="w-full mb-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg flex items-center justify-center gap-2">
+                <button onClick={() => navigate('/news/write')} className="w-full mb-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg flex items-center justify-center gap-2">
                     <PlusCircle size={20} /> 소식 글쓰기
                 </button>
             )}
@@ -429,7 +661,7 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
             <div className="space-y-4">
                 {filteredNews.length > 0 ? (
                     filteredNews.map((news) => (
-                        <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, setCurrentPage, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
+                        <NewsCard key={news.id} {...{news, isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
                     ))
                 ) : (
                     <div className="text-center text-gray-500 py-10 p-8 bg-gray-100 rounded-lg">
@@ -441,7 +673,11 @@ const NewsPage = ({ buanNews, setCurrentPage, handleDeleteNews, handleLikeNews, 
     );
 };
 
-const NewsWritePage = ({ goBack, itemToEdit }) => {
+const NewsWritePage = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const itemToEdit = location.state?.itemToEdit;
+
     const { currentUser } = useAuth();
     const [title, setTitle] = useState(itemToEdit?.title || '');
     const [content, setContent] = useState(itemToEdit?.content || '');
@@ -501,7 +737,9 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
                 date,
                 updatedAt: Timestamp.now(),
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-                applyUrl
+                applyUrl,
+                region: currentUser.region,
+                city: currentUser.city,
             };
 
             if (itemToEdit) {
@@ -511,7 +749,7 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
                 finalData.authorId = currentUser.uid;
                 await addDoc(collection(db, 'news'), finalData);
             }
-            goBack();
+            navigate('/news');
         } catch (error) {
             alert(`오류가 발생했습니다: ${error.message}`);
         } finally {
@@ -523,7 +761,7 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
     return (
         <div>
             <div className="p-4 flex items-center border-b">
-                <button onClick={goBack} className="p-2 -ml-2"><ArrowLeft /></button>
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button>
                 <h2 className="text-lg font-bold mx-auto">{pageTitle}</h2>
                 <button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">
                     {isSubmitting ? '등록 중...' : '완료'}
@@ -550,18 +788,33 @@ const NewsWritePage = ({ goBack, itemToEdit }) => {
     );
 };
 
-const CalendarPage = ({ userEvents, pageParam }) => {
+const CalendarPage = () => {
     const { currentUser } = useAuth();
+    const location = useLocation();
+    const [userEvents, setUserEvents] = useState({});
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);
     const [eventTitle, setEventTitle] = useState('');
 
     useEffect(() => {
-        if(pageParam?.date) {
-            setSelectedDate(pageParam.date);
+      const unsub = onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
+          const eventsData = {};
+          snapshot.docs.forEach(doc => {
+              const event = { id: doc.id, ...doc.data() };
+              if (!eventsData[event.date]) eventsData[event.date] = [];
+              eventsData[event.date].push(event);
+          });
+          setUserEvents(eventsData);
+      });
+      return () => unsub();
+    }, [currentUser.uid]);
+
+    useEffect(() => {
+        if(location.state?.date) {
+            setSelectedDate(location.state.date);
             setIsModalOpen(true);
         }
-    }, [pageParam]);
+    }, [location.state]);
 
     const handleDateClick = (date) => {
         setSelectedDate(date);
@@ -624,22 +877,27 @@ const CalendarPage = ({ userEvents, pageParam }) => {
     );
 };
 
-const BoardPage = ({ setCurrentPage }) => {
+const BoardPage = () => {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('전체');
-    const categories = ['전체', '일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
+
+    const userCity = currentUser?.city;
+    const dynamicMomCategory = `${userCity}맘`;
+    const categories = ['전체', '일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타'];
 
     useEffect(() => {
+        if (!currentUser.city) return;
         setLoading(true);
-        let q;
         const postsCollection = collection(db, "posts");
-
+        
+        let q;
         if (filter === '전체') {
-            q = query(postsCollection, orderBy("createdAt", "desc"), limit(50));
+            q = query(postsCollection, where("city", "==", currentUser.city), orderBy("createdAt", "desc"), limit(50));
         } else {
-            q = query(postsCollection, where("category", "==", filter), orderBy("createdAt", "desc"), limit(50));
+            q = query(postsCollection, where("city", "==", currentUser.city), where("category", "==", filter), orderBy("createdAt", "desc"), limit(50));
         }
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -651,7 +909,7 @@ const BoardPage = ({ setCurrentPage }) => {
         });
 
         return () => unsubscribe();
-    }, [filter]);
+    }, [filter, currentUser.city]);
 
     return (
         <div className="p-4">
@@ -669,9 +927,9 @@ const BoardPage = ({ setCurrentPage }) => {
                 <div className="space-y-3">
                     {posts.length > 0 ? (
                         posts.map(post => {
-                            const style = getCategoryStyle(post.category);
+                            const style = getCategoryStyle(post.category, userCity);
                             return (
-                                <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                                <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
                                     <div className="flex items-center gap-2 mb-2">
                                         <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
                                         <h3 className="font-bold text-md truncate flex-1">{post.title}</h3>
@@ -679,7 +937,7 @@ const BoardPage = ({ setCurrentPage }) => {
                                     <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
                                     <div className="flex justify-between items-center text-xs text-gray-500">
                                     <div>
-                                            <span onClick={(e) => { e.stopPropagation(); setCurrentPage('userProfile', post.authorId); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
+                                            <span onClick={(e) => { e.stopPropagation(); navigate(`/profile/${post.authorId}`); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
                                             <span className="mx-1">·</span>
                                             <span>{timeSince(post.createdAt)}</span>
                                     </div>
@@ -701,7 +959,7 @@ const BoardPage = ({ setCurrentPage }) => {
                 </div>
             )}
              <button
-                onClick={() => setCurrentPage('write')}
+                onClick={() => navigate('/post/write')}
                 className="fixed bottom-24 right-5 bg-[#00462A] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-[#003a22] transition-transform transform hover:scale-110">
                 <PlusCircle size={28} />
             </button>
@@ -709,16 +967,22 @@ const BoardPage = ({ setCurrentPage }) => {
     );
 };
 
-const WritePage = ({ goBack, itemToEdit }) => {
+const WritePage = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const itemToEdit = location.state?.itemToEdit;
+    
     const { currentUser } = useAuth();
     const [title, setTitle] = useState(itemToEdit?.title || '');
     const [content, setContent] = useState(itemToEdit?.content || '');
-    const [category, setCategory] = useState(itemToEdit?.category || '일상');
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const categories = ['일상', '친목', '10대', '청년', '중년', '부안맘', '질문'];
+    const userCity = currentUser?.city;
+    const dynamicMomCategory = `${userCity}맘`;
+    const categories = ['일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타'];
+    const [category, setCategory] = useState(itemToEdit?.category || '일상');
 
     useEffect(() => {
         return () => {
@@ -778,13 +1042,15 @@ const WritePage = ({ goBack, itemToEdit }) => {
                     ...postData,
                     authorId: currentUser.uid,
                     authorName: currentUser.displayName,
+                    region: currentUser.region,
+                    city: currentUser.city,
                     createdAt: Timestamp.now(),
                     likes: [],
                     bookmarks: [],
                     commentCount: 0,
                 });
             }
-            goBack();
+            navigate('/board');
         } catch (error) {
             alert(`오류가 발생했습니다: ${error.message}`);
         } finally {
@@ -797,7 +1063,7 @@ const WritePage = ({ goBack, itemToEdit }) => {
     return (
         <div>
             <div className="p-4 flex items-center border-b">
-                <button onClick={goBack} className="p-2 -ml-2"><ArrowLeft /></button>
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button>
                 <h2 className="text-lg font-bold mx-auto">{pageTitle}</h2>
                 <button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">
                     {isSubmitting ? '등록 중...' : '완료'}
@@ -806,7 +1072,7 @@ const WritePage = ({ goBack, itemToEdit }) => {
             <div className="p-4 space-y-4">
                 <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {categories.map(cat => (
-                        <button key={cat} onClick={() => setCategory(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${category === cat ? `${getCategoryStyle(cat).bgStrong} text-white` : 'bg-gray-200 text-gray-700'}`}>{cat}</button>
+                        <button key={cat} onClick={() => setCategory(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${category === cat ? `${getCategoryStyle(cat, userCity).bgStrong} text-white` : 'bg-gray-200 text-gray-700'}`}>{cat}</button>
                     ))}
                 </div>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
@@ -826,7 +1092,9 @@ const WritePage = ({ goBack, itemToEdit }) => {
     );
 };
 
-const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
+const PostDetailPage = () => {
+    const { postId } = useParams();
+    const navigate = useNavigate();
     const { currentUser } = useAuth();
     const [post, setPost] = useState(null);
     const [comments, setComments] = useState([]);
@@ -835,7 +1103,7 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
 
     useEffect(() => {
         if (!postId) {
-            goBack();
+            navigate('/board');
             return;
         }
         const postRef = doc(db, `posts`, postId);
@@ -844,7 +1112,7 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
                 setPost({ id: doc.id, ...doc.data() });
             } else {
                 alert("삭제된 게시글입니다.");
-                goBack();
+                navigate('/board');
             }
             setLoading(false);
         });
@@ -860,58 +1128,47 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
             unsubscribePost();
             unsubscribeComments();
         };
-    }, [postId, goBack]);
+    }, [postId, navigate]);
 
     const handleLike = async () => {
         if (!post || !currentUser) return;
         const postRef = doc(db, 'posts', postId);
-        
         try {
-            const postSnap = await getDoc(postRef);
-            if (!postSnap.exists()) return;
-            const currentLikes = postSnap.data().likes || [];
-            const liked = currentLikes.includes(currentUser.uid);
-
             await updateDoc(postRef, {
-                likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+                likes: post.likes?.includes(currentUser.uid) ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
             });
-        } catch (e) {
-            console.error("Error updating like: ", e);
-        }
+        } catch (e) { console.error("Error updating like: ", e); }
     };
 
     const handleBookmark = async () => {
         if (!post || !currentUser) return;
         const postRef = doc(db, 'posts', postId);
         try {
-            const postSnap = await getDoc(postRef);
-            if (!postSnap.exists()) return;
-            const currentBookmarks = postSnap.data().bookmarks || [];
-            const bookmarked = currentBookmarks.includes(currentUser.uid);
-            await updateDoc(postRef, {
-                bookmarks: bookmarked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+             await updateDoc(postRef, {
+                bookmarks: post.bookmarks?.includes(currentUser.uid) ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
             });
-        } catch(e) {
-            console.error("Error updating bookmark:", e);
-        }
+        } catch(e) { console.error("Error updating bookmark:", e); }
     };
 
     const handleCommentSubmit = async (e) => {
         e.preventDefault();
         if (!newComment.trim() || !currentUser) return;
         try {
-            await addDoc(collection(db, `posts/${postId}/comments`), {
+            const batch = writeBatch(db);
+            const postRef = doc(db, 'posts', postId);
+            const newCommentRef = doc(collection(db, `posts/${postId}/comments`));
+
+            batch.set(newCommentRef, {
                 text: newComment.trim(),
                 authorId: currentUser.uid,
                 authorName: currentUser.displayName,
                 createdAt: Timestamp.now(),
                 likes: []
             });
-            await updateDoc(doc(db, 'posts', postId), { commentCount: increment(1) });
+            batch.update(postRef, { commentCount: increment(1) });
+            await batch.commit();
             setNewComment('');
-        } catch (error) {
-            console.error("Error adding comment: ", error);
-        }
+        } catch (error) { console.error("Error adding comment: ", error); }
     };
 
     const handleCommentLike = async (commentId) => {
@@ -921,13 +1178,10 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
             const commentSnap = await getDoc(commentRef);
             if (!commentSnap.exists()) return;
             const currentLikes = commentSnap.data().likes || [];
-            const liked = currentLikes.includes(currentUser.uid);
             await updateDoc(commentRef, {
-                likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+                likes: currentLikes.includes(currentUser.uid) ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
             });
-        } catch(e) {
-            console.error("Error liking comment:", e);
-        }
+        } catch(e) { console.error("Error liking comment:", e); }
     };
 
     const handleDelete = async (postId, imagePath) => {
@@ -939,14 +1193,10 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
                 const deletePromises = commentsSnap.docs.map(doc => deleteDoc(doc.ref));
                 await Promise.all(deletePromises);
                 
-                if (imagePath) {
-                    await deleteObject(ref(storage, imagePath));
-                }
-
+                if (imagePath) { await deleteObject(ref(storage, imagePath)); }
                 await deleteDoc(doc(db, 'posts', postId));
-                
                 alert("게시글이 삭제되었습니다.");
-                goBack();
+                navigate('/board');
             } catch (error) {
                 console.error("Error deleting post:", error)
                 alert("삭제 중 오류가 발생했습니다.");
@@ -954,14 +1204,13 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
         }
     };
 
-
     if (loading) return <LoadingSpinner />;
     if (!post) return null;
 
     const isAuthor = post.authorId === currentUser.uid;
     const isLiked = post.likes?.includes(currentUser.uid);
     const isBookmarked = post.bookmarks?.includes(currentUser.uid);
-    const style = getCategoryStyle(post.category);
+    const style = getCategoryStyle(post.category, post.city);
 
     return (
         <div className="pb-20">
@@ -973,7 +1222,7 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
                         <div className="flex items-center gap-2">
                             {isAuthor && (
                                 <>
-                                    <button onClick={() => setCurrentPage('editPost', post)} className="p-1 text-gray-500 hover:text-blue-600"><Pencil size={20} /></button>
+                                    <button onClick={() => navigate(`/post/edit/${post.id}`, { state: { itemToEdit: post }})} className="p-1 text-gray-500 hover:text-blue-600"><Pencil size={20} /></button>
                                     <button onClick={() => handleDelete(post.id, post.imagePath)} className="p-1 text-gray-500 hover:text-red-600"><Trash2 size={20} /></button>
                                 </>
                             )}
@@ -983,8 +1232,10 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
                         </div>
                     </div>
                     <div className="flex items-center text-sm text-gray-500 mt-4">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 mr-2"></div>
-                        <span onClick={() => setCurrentPage('userProfile', post.authorId)} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
+                        <div className="w-8 h-8 rounded-full bg-gray-200 mr-2 overflow-hidden flex items-center justify-center" onClick={() => navigate(`/profile/${post.authorId}`)}>
+                            {post.authorPhotoURL ? <img src={post.authorPhotoURL} alt={post.authorName} className="w-full h-full object-cover" /> : <UserCircle size={32} className="text-gray-400" />}
+                        </div>
+                        <span onClick={() => navigate(`/profile/${post.authorId}`)} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
                         <span className="mx-2">·</span>
                         <span>{timeSince(post.createdAt)}</span>
                     </div>
@@ -1003,10 +1254,10 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
                 <div className="space-y-4">
                     {comments.map(comment => (
                         <div key={comment.id} className="flex gap-3">
-                             <div className="w-8 h-8 rounded-full bg-gray-200 mt-1 flex-shrink-0"></div>
+                             <div className="w-8 h-8 rounded-full bg-gray-200 mt-1 flex-shrink-0 cursor-pointer" onClick={() => navigate(`/profile/${comment.authorId}`)}></div>
                              <div className="flex-1">
                                 <div className="bg-gray-100 p-3 rounded-lg">
-                                    <p onClick={() => setCurrentPage('userProfile', comment.authorId)} className="font-semibold text-sm cursor-pointer hover:underline">{comment.authorName}</p>
+                                    <p onClick={() => navigate(`/profile/${comment.authorId}`)} className="font-semibold text-sm cursor-pointer hover:underline">{comment.authorName}</p>
                                     <p className="text-gray-800">{comment.text}</p>
                                 </div>
                                 <div className="flex items-center mt-1 text-xs text-gray-500">
@@ -1039,15 +1290,14 @@ const PostDetailPage = ({ postId, setCurrentPage, goBack }) => {
     );
 };
 
-const ProfileEditPage = ({ goBack }) => {
+const ProfileEditPage = () => {
+    const navigate = useNavigate();
     const { currentUser } = useAuth();
     const [bio, setBio] = useState(currentUser?.bio || '');
-    const [town, setTown] = useState(currentUser?.town || '부안읍');
+    const [town, setTown] = useState(currentUser?.town || '');
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(currentUser?.photoURL || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const towns = ["부안읍", "행안면", "백산면", "주산면", "하서면", "상서면", "동진면", "계화면", "보안면", "줄포면", "진서면", "변산면", "위도면"];
 
     useEffect(() => {
         return () => {
@@ -1091,7 +1341,7 @@ const ProfileEditPage = ({ goBack }) => {
             }
 
             alert('프로필이 성공적으로 업데이트되었습니다.');
-            goBack();
+            navigate(`/profile/${currentUser.uid}`);
 
         } catch (error) {
             console.error("프로필 업데이트 오류:", error);
@@ -1104,7 +1354,7 @@ const ProfileEditPage = ({ goBack }) => {
     return (
         <div>
             <div className="p-4 flex items-center border-b">
-                <button onClick={goBack} className="p-2 -ml-2"><ArrowLeft /></button>
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button>
                 <h2 className="text-lg font-bold mx-auto">프로필 편집</h2>
                 <button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">
                     {isSubmitting ? '저장 중...' : '저장'}
@@ -1131,10 +1381,8 @@ const ProfileEditPage = ({ goBack }) => {
                         <textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="자기소개를 입력해주세요." className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#00462A]" rows="3"/>
                     </div>
                     <div>
-                        <label htmlFor="town" className="block text-sm font-medium text-gray-700 mb-1">동네 선택</label>
-                        <select id="town" value={town} onChange={(e) => setTown(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#00462A]">
-                            {towns.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
+                         <label htmlFor="town" className="block text-sm font-medium text-gray-700 mb-1">상세 동네 (직접 입력)</label>
+                        <input type="text" id="town" value={town} onChange={(e) => setTown(e.target.value)} placeholder="예: 부안읍, 효자동" className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
                     </div>
                 </div>
             </div>
@@ -1142,11 +1390,13 @@ const ProfileEditPage = ({ goBack }) => {
     );
 };
 
-const UserProfilePage = ({ userId, setCurrentPage }) => {
+const UserProfilePage = () => {
+    const { userId } = useParams();
+    const navigate = useNavigate();
     const { currentUser } = useAuth();
     const [profileUser, setProfileUser] = useState(null);
     const [userPosts, setUserPosts] = useState([]);
-    const [isFollowing, setIsFollowing] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!userId) return;
@@ -1156,8 +1406,10 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
             if(doc.exists()){
                 const userData = doc.data();
                 setProfileUser({...userData, id: doc.id, uid: doc.id, photoURL: userData.photoURL || null});
-                setIsFollowing(userData.followers?.includes(currentUser.uid) || false);
+            } else {
+              setProfileUser(null);
             }
+            setLoading(false);
         });
 
         const userPostsQuery = query(collection(db, 'posts'), where("authorId", "==", userId), orderBy("createdAt", "desc"));
@@ -1166,41 +1418,47 @@ const UserProfilePage = ({ userId, setCurrentPage }) => {
         });
         
         return () => { unsubscribeUser(); unsubscribePosts(); };
-    }, [userId, currentUser.uid]);
+    }, [userId]);
 
-const handleFollow = async () => {
-    // 나의 문서와 상대방의 문서를 모두 참조
-    const currentUserRef = doc(db, 'users', currentUser.uid);
-    const profileUserRef = doc(db, 'users', userId);
+    const handleFollow = async () => {
+        const batch = writeBatch(db);
+        const currentUserRef = doc(db, 'users', currentUser.uid);
+        const profileUserRef = doc(db, 'users', userId);
 
-    try {
-        if (isFollowing) {
-            // 언팔로우: 내 following 목록과 상대 followers 목록에서 서로의 ID를 제거
-            await updateDoc(currentUserRef, { following: arrayRemove(userId) });
-            await updateDoc(profileUserRef, { followers: arrayRemove(currentUser.uid) });
-        } else {
-            // 팔로우: 내 following 목록과 상대 followers 목록에 서로의 ID를 추가
-            await updateDoc(currentUserRef, { following: arrayUnion(userId) });
-            await updateDoc(profileUserRef, { followers: arrayUnion(currentUser.uid) });
+        try {
+            if (profileUser.followers?.includes(currentUser.uid)) {
+                batch.update(currentUserRef, { following: arrayRemove(userId) });
+                batch.update(profileUserRef, { followers: arrayRemove(currentUser.uid) });
+            } else {
+                batch.update(currentUserRef, { following: arrayUnion(userId) });
+                batch.update(profileUserRef, { followers: arrayUnion(currentUser.uid) });
+            }
+            await batch.commit();
+        } catch (error) {
+            console.error("팔로우 처리 중 오류:", error);
+            alert("팔로우 처리 중 오류가 발생했습니다.");
         }
-    } catch (error) {
-        console.error("팔로우 처리 중 오류:", error);
-        alert("팔로우 처리 중 오류가 발생했습니다.");
-    }
-};
+    };
     
     const handleLogout = async () => {
         if (window.confirm('로그아웃 하시겠습니까?')) {
             await signOut(auth);
+            navigate('/start');
         }
     };
 
     const handleMessage = () => {
-        setCurrentPage('chatPage', { recipientId: userId, recipientName: profileUser.displayName });
+        const chatId = [currentUser.uid, userId].sort().join('_');
+        navigate(`/chat/${chatId}`, { state: { recipientId: userId, recipientName: profileUser.displayName }});
     };
 
-    if(!profileUser) return <LoadingSpinner />;
+    if(loading) return <LoadingSpinner />;
+    if(!profileUser) return <div className='p-4 text-center'>사용자를 찾을 수 없습니다.</div>;
+
     const isMyProfile = currentUser.uid === userId;
+    const isFollowing = profileUser.followers?.includes(currentUser.uid) || false;
+    const userLocation = profileUser.region && profileUser.city ? `${profileUser.region} ${profileUser.city}` : '';
+    const userTown = profileUser.town || '';
 
     return (
         <div className="p-4">
@@ -1215,7 +1473,7 @@ const handleFollow = async () => {
                 <div className="flex-1">
                     <h2 className="text-xl font-bold">{profileUser.displayName}</h2>
                     <p className="text-sm text-gray-600 mt-1">{profileUser.bio || '자기소개를 입력해주세요.'}</p>
-                    <p className="text-xs text-gray-500 mt-1">{profileUser.town || '동네를 설정해주세요.'}</p>
+                    <p className="text-xs text-gray-500 mt-1">{[userLocation, userTown].filter(Boolean).join(' · ')}</p>
                     <div className="text-sm text-gray-500 mt-2">
                         <span>팔로워 {profileUser.followers?.length || 0}</span>
                         <span className="mx-2">·</span>
@@ -1226,7 +1484,7 @@ const handleFollow = async () => {
             <div className="flex gap-2 mb-6">
                 {isMyProfile ? (
                     <>
-                        <button onClick={() => setCurrentPage('editProfile')} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
+                        <button onClick={() => navigate('/profile/edit')} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
                             <Edit size={16} /> 프로필 편집
                         </button>
                         <button onClick={handleLogout} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
@@ -1248,7 +1506,7 @@ const handleFollow = async () => {
             <div className="space-y-3">
                 <h3 className="text-lg font-bold">작성한 글</h3>
                 {userPosts.length > 0 ? userPosts.map(post => (
-                     <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                     <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
                         <h4 className="font-bold text-md truncate mb-1">{post.title}</h4>
                         <p className="text-gray-600 text-sm truncate">{post.content}</p>
                     </div>
@@ -1258,7 +1516,9 @@ const handleFollow = async () => {
     );
 };
 
-const SearchPage = ({ setCurrentPage }) => {
+const SearchPage = () => {
+    const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -1272,6 +1532,7 @@ const SearchPage = ({ setCurrentPage }) => {
         try {
             const postsRef = collection(db, 'posts');
             const q = query(postsRef, 
+                where('city', '==', currentUser.city),
                 where('title', '>=', searchTerm),
                 where('title', '<=', searchTerm + '\uf8ff')
             );
@@ -1292,16 +1553,16 @@ const SearchPage = ({ setCurrentPage }) => {
                 <input type="text" value={searchTerm} 
                     onChange={(e) => setSearchTerm(e.target.value)} 
                     onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    placeholder="검색어를 입력하세요..."
+                    placeholder={`${currentUser.city} 내에서 검색...`}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <button onClick={handleSearch} className="px-4 py-2 bg-[#00462A] text-white rounded-full font-semibold">검색</button>
             </div>
-            {loading ? <LoadingSpinner /> : (
+ 	{loading ? <LoadingSpinner /> : (
                 <div className="space-y-3">
-                    {results.length === 0 && searchTerm && ( <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p> )}
+                    {results.length === 0 && searchTerm && !loading && ( <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p> )}
                     {results.map(post => (
-                        <div key={post.id} onClick={() => setCurrentPage('postDetail', post.id)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                        <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
                             <h3 className="font-bold text-md truncate mb-1">{post.title}</h3>
                             <p className="text-gray-600 text-sm truncate">{post.content}</p>
                         </div>
@@ -1311,7 +1572,6 @@ const SearchPage = ({ setCurrentPage }) => {
         </div>
     );
 };
-
 const NotificationsPage = () => {
     const notifications = [
         { id: 1, text: '알림 기능은 APP 버전에서만 작동합니다.', time: '방금 전' },
@@ -1320,15 +1580,44 @@ const NotificationsPage = () => {
     return ( <div className="p-4"> {notifications.map(notif => ( <div key={notif.id} className="p-3 border-b border-gray-200"> <p className="text-sm">{notif.text}</p> <p className="text-xs text-gray-500 mt-1">{notif.time}</p> </div> ))} </div> );
 };
 
-const ChatListPage = ({ chats, setCurrentPage }) => {
+const ChatListPage = () => {
+    const { currentUser } = useAuth();
+    const navigate = useNavigate();
+    const [chats, setChats] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const q = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
+            const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
+                const chatData = docSnap.data();
+                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
+                if (!otherMemberId) return null;
+                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
+                return { 
+                    id: docSnap.id, 
+                    ...chatData, 
+                    otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId }, 
+                };
+            }));
+            setChats(chatsData.filter(Boolean));
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [currentUser.uid]);
+
+    if (loading) return <LoadingSpinner />;
+
     return (
         <div className="p-4">
             <h2 className="text-xl font-bold mb-4">채팅 목록</h2>
             <div className="space-y-3">
                 {chats.length > 0 ? chats.map(chat => (
-                    <div key={chat.id} onClick={() => setCurrentPage('chatPage', { recipientId: chat.otherUser.uid, recipientName: chat.otherUser.displayName })}
+                    <div key={chat.id} onClick={() => navigate(`/chat/${chat.id}`, { state: { recipientId: chat.otherUser.uid, recipientName: chat.otherUser.displayName }})}
                         className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-gray-300 flex-shrink-0"></div>
+                        <div className="w-12 h-12 rounded-full bg-gray-300 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                            {chat.otherUser.photoURL ? <img src={chat.otherUser.photoURL} alt={chat.otherUser.displayName} className="w-full h-full object-cover" /> : <UserCircle size={48} className="text-gray-400"/>}
+                        </div>
                         <div className="flex-1 overflow-hidden">
                             <h3 className="font-bold">{chat.otherUser.displayName}</h3>
                             <p className="text-sm text-gray-500 truncate">{chat.lastMessage?.text || '메시지를 보내보세요.'}</p>
@@ -1342,15 +1631,16 @@ const ChatListPage = ({ chats, setCurrentPage }) => {
     );
 };
 
-const ChatPage = ({ pageParam }) => {
+const ChatPage = () => {
     const { currentUser } = useAuth();
-    const { recipientId } = pageParam;
+    const { chatId } = useParams();
+    const location = useLocation();
+    const { recipientId } = location.state || {};
+
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef(null);
     
-    const chatId = [currentUser.uid, recipientId].sort().join('_');
-
     useEffect(() => {
         const messagesRef = collection(db, 'chats', chatId, 'messages');
         const q = query(messagesRef, orderBy('createdAt', 'asc'));
@@ -1366,23 +1656,26 @@ const ChatPage = ({ pageParam }) => {
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
-        if (!newMessage.trim()) return;
+        if (!newMessage.trim() || !recipientId) return;
 
         const messageData = {
             text: newMessage,
             senderId: currentUser.uid,
             createdAt: Timestamp.now(),
         };
-
-        const chatRef = doc(db, 'chats', chatId);
-        const messagesRef = collection(chatRef, 'messages');
         
         try {
-            await addDoc(messagesRef, messageData);
-            await setDoc(chatRef, {
+            const batch = writeBatch(db);
+            const chatRef = doc(db, 'chats', chatId);
+            const newMessageRef = doc(collection(chatRef, 'messages'));
+
+            batch.set(newMessageRef, messageData);
+            batch.set(chatRef, {
                 members: [currentUser.uid, recipientId],
                 lastMessage: messageData,
             }, { merge: true });
+
+            await batch.commit();
             setNewMessage('');
         } catch (error) {
             console.error("Error sending message:", error);
@@ -1419,20 +1712,14 @@ const ChatPage = ({ pageParam }) => {
     );
 };
 
-// App.js 파일에서 이 컴포넌트만 교체하세요.
-
-// App.js 파일에서 이 컴포넌트만 교체하세요.
-
-// App.js 파일에서 이 컴포넌트만 교체하세요.
-
-const ClubListPage = ({ setCurrentPage }) => {
+const ClubListPage = () => {
+    const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const [clubs, setClubs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [passwordModalOpen, setPasswordModalOpen] = useState(false);
     const [selectedClub, setSelectedClub] = useState(null);
     const [password, setPassword] = useState('');
-    const { currentUser } = useAuth();
-
     const [activeTab, setActiveTab] = useState('내 모임');
 
     useEffect(() => {
@@ -1448,33 +1735,24 @@ const ClubListPage = ({ setCurrentPage }) => {
     const displayedClubs = activeTab === '내 모임' ? myClubs : clubs;
 
     const handleEnterClub = (club) => {
-        if (!club.password || (club.members && club.members.includes(currentUser.uid))) {
-            setCurrentPage('clubDetail', { clubId: club.id });
+        if ((club.members && club.members.includes(currentUser.uid)) || !club.password) {
+            navigate(`/clubs/${club.id}`);
         } else {
             setSelectedClub(club);
             setPasswordModalOpen(true);
         }
     };
 
-    // ▼▼▼ 이 함수를 아래의 새 코드로 교체합니다. ▼▼▼
     const handlePasswordSubmit = async () => {
         if (!selectedClub || !password) return;
-
         if (password === selectedClub.password) {
             const clubRef = doc(db, 'clubs', selectedClub.id);
-
             try {
-                // 1. Firestore에 멤버 추가를 먼저 요청하고 '기다린다'.
-                await updateDoc(clubRef, {
-                    members: arrayUnion(currentUser.uid)
-                });
-                
-                // 2. 멤버 추가가 성공하면 다음 작업을 수행한다.
-                setCurrentPage('clubDetail', { clubId: selectedClub.id });
+                await updateDoc(clubRef, { members: arrayUnion(currentUser.uid) });
+                navigate(`/clubs/${selectedClub.id}`);
                 setPasswordModalOpen(false);
                 setPassword('');
                 setSelectedClub(null);
-
             } catch (error) {
                 console.error("멤버 추가 오류:", error);
                 alert("모임 입장에 실패했습니다. 다시 시도해주세요.");
@@ -1483,11 +1761,10 @@ const ClubListPage = ({ setCurrentPage }) => {
             alert('비밀번호가 일치하지 않습니다.');
         }
     };
-    // ▲▲▲ 여기까지 교체 ▲▲▲
     
     const handleCreatorClick = (e, creatorId) => {
         e.stopPropagation();
-        setCurrentPage('userProfile', creatorId);
+        navigate(`/profile/${creatorId}`);
     };
 
     if (loading) return <LoadingSpinner />;
@@ -1523,11 +1800,10 @@ const ClubListPage = ({ setCurrentPage }) => {
                         전체 모임
                     </button>
                 </div>
-                <button onClick={() => setCurrentPage('clubCreate')} className="bg-[#00462A] text-white font-bold py-2 px-3 rounded-lg hover:bg-[#003a22] flex items-center gap-1 text-sm">
+                <button onClick={() => navigate('/clubs/create')} className="bg-[#00462A] text-white font-bold py-2 px-3 rounded-lg hover:bg-[#003a22] flex items-center gap-1 text-sm">
                     <PlusCircle size={16} /> 만들기
                 </button>
             </div>
-
             <div className="space-y-3">
                 {displayedClubs.length > 0 ? displayedClubs.map(club => (
                     <div key={club.id} onClick={() => handleEnterClub(club)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
@@ -1555,7 +1831,8 @@ const ClubListPage = ({ setCurrentPage }) => {
     );
 };
 
-const ClubCreatePage = ({ goBack }) => {
+const ClubCreatePage = () => {
+    const navigate = useNavigate();
     const { currentUser } = useAuth();
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -1589,7 +1866,7 @@ const ClubCreatePage = ({ goBack }) => {
                 members: [currentUser.uid],
                 createdAt: Timestamp.now(),
             });
-            goBack();
+            navigate('/clubs');
         } catch (error) {
             console.error(error);
             alert('모임 생성 중 오류가 발생했습니다.');
@@ -1612,7 +1889,7 @@ const ClubCreatePage = ({ goBack }) => {
     return (
         <div>
             <div className="p-4 flex items-center border-b">
-                <button onClick={goBack} className="p-2 -ml-2"><ArrowLeft /></button>
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button>
                 <h2 className="text-lg font-bold mx-auto">모임 만들기</h2>
                 <button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">{isSubmitting ? '생성 중...' : '완료'}</button>
             </div>
@@ -1623,32 +1900,45 @@ const ClubCreatePage = ({ goBack }) => {
                     </label>
                     <input id="club-image-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </div>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="모임 이름" className="w-full p-2 border-b-2"/>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="모임 소개" className="w-full p-2 border-b-2 h-24"/>
-                <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="카테고리 (예: 등산, 독서)" className="w-full p-2 border-b-2"/>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호 (없으면 비공개)" className="w-full p-2 border-b-2"/>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="모임 이름" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]"/>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="모임 소개" className="w-full p-2 border-b-2 h-24 resize-none focus:outline-none focus:border-[#00462A]"/>
+                <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="카테고리 (예: 등산, 독서)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]"/>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호 (없으면 공개 모임)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]"/>
             </div>
         </div>
     );
 };
 
-const ClubDetailPage = ({ pageParam, setCurrentPage, goBack }) => {
-    const { clubId } = pageParam;
+const ClubDetailPage = () => {
+    const { clubId } = useParams();
+    const navigate = useNavigate();
+    const { currentUser } = useAuth();
     const [club, setClub] = useState(null);
     const [members, setMembers] = useState([]);
     const [posts, setPosts] = useState([]);
-    const { currentUser } = useAuth();
+    const [loading, setLoading] = useState(true);
     
     useEffect(() => {
+        if (!clubId) {
+            navigate('/clubs');
+            return;
+        }
+
         const clubRef = doc(db, 'clubs', clubId);
         const unsubscribeClub = onSnapshot(clubRef, (doc) => {
             if (doc.exists()) {
                 const clubData = { id: doc.id, ...doc.data() };
                 setClub(clubData);
-                if (clubData.members) fetchMembers(clubData.members);
+                if (clubData.members && clubData.members.length > 0) {
+                    fetchMembers(clubData.members);
+                } else {
+                    setMembers([]);
+                }
             } else {
-                goBack();
+                alert("삭제되거나 존재하지 않는 모임입니다.");
+                navigate('/clubs');
             }
+            setLoading(false);
         });
 
         const postsQuery = query(collection(db, 'clubs', clubId, 'club_posts'), orderBy('createdAt', 'desc'), limit(5));
@@ -1657,28 +1947,44 @@ const ClubDetailPage = ({ pageParam, setCurrentPage, goBack }) => {
         });
 
         const fetchMembers = async (memberIds) => {
-            if (!memberIds || memberIds.length === 0) return;
-            const memberPromises = memberIds.map(id => getDoc(doc(db, 'users', id)));
-            const memberDocs = await Promise.all(memberPromises);
-            setMembers(memberDocs.map(doc => doc.exists() ? {id: doc.id, ...doc.data()} : null).filter(Boolean));
+            try {
+                const memberPromises = [];
+                // Firestore 'in' 쿼리는 10개 아이템 제한이 있음
+                for (let i = 0; i < memberIds.length; i += 10) {
+                    const chunk = memberIds.slice(i, i + 10);
+                    const q = query(collection(db, 'users'), where('__name__', 'in', chunk));
+                    memberPromises.push(getDocs(q));
+                }
+                const memberSnapshots = await Promise.all(memberPromises);
+                const fetchedMembers = [];
+                memberSnapshots.forEach(snapshot => {
+                    snapshot.forEach(doc => fetchedMembers.push({id: doc.id, ...doc.data()}));
+                });
+                setMembers(fetchedMembers);
+            } catch (error) {
+                console.error("멤버 정보 가져오기 오류:", error);
+                setMembers([]);
+            }
         };
 
         return () => {
             unsubscribeClub();
             unsubscribePosts();
         };
-    }, [clubId, goBack]);
+    }, [clubId, navigate]);
 
-    if (!club) return <LoadingSpinner />;
+    if (loading) return <LoadingSpinner />;
+    if (!club) return null;
+
     const isCreator = currentUser.uid === club.creatorId;
 
     return (
         <div>
              <div className="relative">
-                <img src={club.photoURL} className="w-full h-48 object-cover"/>
+                <img src={club.photoURL} alt={club.name} className="w-full h-48 object-cover bg-gray-300"/>
                 <div className="absolute inset-0 bg-black/30"></div>
-                <div className="absolute top-4 left-4"><button onClick={goBack} className="text-white bg-black/30 p-2 rounded-full"><ArrowLeft/></button></div>
-                {isCreator && <div className="absolute top-4 right-4"><button onClick={() => alert('수정기능 준비중')} className="text-white bg-black/30 p-2 rounded-full"><Edit2/></button></div>}
+                <div className="absolute top-4 left-4"><button onClick={() => navigate(-1)} className="text-white bg-black/30 p-2 rounded-full"><ArrowLeft/></button></div>
+                {isCreator && <div className="absolute top-4 right-4"><button onClick={() => alert('수정 기능은 준비중입니다.')} className="text-white bg-black/30 p-2 rounded-full"><Edit2/></button></div>}
                 <div className="absolute bottom-4 left-4 text-white">
                     <h2 className="text-2xl font-bold">{club.name}</h2>
                     <p className="text-sm">{club.description}</p>
@@ -1688,14 +1994,14 @@ const ClubDetailPage = ({ pageParam, setCurrentPage, goBack }) => {
                 <section className="mb-6">
                      <div className="flex justify-between items-center mb-3">
                         <h3 className="text-lg font-bold">게시글</h3>
-                        <a href="#" onClick={(e) => { e.preventDefault(); alert("준비중입니다.") }} className="text-sm font-medium text-gray-500">더 보기 <ChevronRight className="inline-block" size={14}/></a>
+                        <a href="#" onClick={(e) => { e.preventDefault(); alert("준비중입니다.") }} className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14}/></a>
                     </div>
                 </section>
                 <section>
-                    <h3 className="text-lg font-bold mb-3">멤버 ({members.length})</h3>
+                    <h3 className="text-lg font-bold mb-3">멤버 ({club.members?.length || 0})</h3>
                     <div className="space-y-2">
                         {members.map(member => (
-                            <div key={member.id} onClick={() => setCurrentPage('userProfile', member.id)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                            <div key={member.id} onClick={() => navigate(`/profile/${member.id}`)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
                                 {member.photoURL ? <img src={member.photoURL} alt={member.displayName} className="w-8 h-8 rounded-full bg-gray-300 object-cover" /> : <UserCircle size={32} className="text-gray-400" />}
                                 <span>{member.displayName}</span>
                             </div>
@@ -1708,27 +2014,111 @@ const ClubDetailPage = ({ pageParam, setCurrentPage, goBack }) => {
     )
 }
 
-// --- 네비게이션 ---
-const BottomNav = ({ currentPage, setCurrentPage }) => {
+// =================================================================
+// ▼▼▼ 레이아웃 및 라우팅 설정 ▼▼▼
+// =================================================================
+
+// --- 공통 레이아웃 (헤더, 하단 네비게이션) ---
+const MainLayout = ({ children }) => {
+    return (
+        <div className="relative">
+            <Header />
+            <main className="bg-white" style={{ minHeight: 'calc(100vh - 61px)'}}>
+                {children}
+            </main>
+            <BottomNav />
+        </div>
+    );
+};
+
+// --- 헤더 컴포넌트 ---
+const Header = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { currentUser } = useAuth();
+    
+    // 이 페이지들에서는 헤더를 숨깁니다.
+    const hideHeaderOn = ['/post/write', '/news/write', '/profile/edit', '/clubs/create', '/post/edit', '/news/edit', '/club/edit'];
+    const shouldHide = hideHeaderOn.some(path => location.pathname.startsWith(path));
+    if (shouldHide) return null;
+
+    const mainPages = ['/home'];
+    const isSubPage = !mainPages.includes(location.pathname) && location.pathname !== '/';
+    
+    // 동적 경로에서 제목을 추출
+    const getPageTitle = () => {
+        const { pathname } = location;
+        if(pathname.startsWith('/profile/')) return '프로필';
+        if(pathname.startsWith('/post/')) return '게시글';
+        if(pathname.startsWith('/chat/')) {
+            return location.state?.recipientName || '채팅';
+        }
+        if(pathname.startsWith('/clubs/')) return '모임';
+
+        const titleMap = {
+            '/home': '마을N', '/news': '소식', '/board': '게시판', '/clubs': '모임',
+            '/calendar': '달력', '/search': '검색', '/notifications': '알림', '/chats': '채팅',
+        };
+        return titleMap[pathname] || '마을N';
+    }
+    const title = getPageTitle();
+
+    return (
+        <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200">
+            <div className="flex items-center gap-2 flex-1">
+                {isSubPage ? (<button onClick={() => navigate(-1)} className="p-1 -ml-2"><ArrowLeft size={24} /></button>) : (<Logo size={28} />)}
+                <h1 className="text-xl font-bold text-gray-800 truncate">{title}</h1>
+            </div>
+            <div className="flex items-center gap-3">
+                <Link to="/search" className="p-1"><Search size={24} className="text-gray-600" /></Link>
+                <Link to="/chats" className="p-1"><MessageSquare size={24} className="text-gray-600" /></Link>
+                <Link to="/notifications" className="p-1"><Bell size={24} className="text-gray-600" /></Link>
+                {currentUser && (
+                    <Link to={`/profile/${currentUser.uid}`}>
+                        {currentUser.photoURL ? 
+                           <img src={currentUser.photoURL} alt="profile" className="w-8 h-8 rounded-full bg-gray-200 object-cover"/> :
+                           <UserCircle size={32} className="text-gray-400"/>
+                        }
+                    </Link>
+                )}
+            </div>
+        </header>
+    );
+};
+
+// --- 하단 네비게이션 ---
+const BottomNav = () => {
+    const location = useLocation();
     const navItems = [
-        { id: 'home', icon: Home, label: '홈' }, 
-        { id: 'board', icon: LayoutGrid, label: '게시판' },
-        { id: 'news', icon: Newspaper, label: '소식' },
-        { id: 'clubs', icon: Users, label: '클럽' },
-        { id: 'benefits', icon: TicketPercent, label: '혜택' },
+        { path: '/home', icon: Home, label: '홈' }, 
+        { path: '/board', icon: LayoutGrid, label: '게시판' },
+        { path: '/news', icon: Newspaper, label: '소식' },
+        { path: '/clubs', icon: Users, label: '클럽' },
+        { path: '/benefits', icon: TicketPercent, label: '혜택' },
     ];
+
+    // 네비게이션을 숨길 페이지 경로
+    const hideNavOn = ['/post', '/profile', '/chat', '/search', '/notifications', '/calendar', '/post/write', '/news/write', '/profile/edit', '/clubs/create'];
+    const shouldHide = hideNavOn.some(path => location.pathname.startsWith(path));
+    if (shouldHide) return null;
+
     return (
         <footer className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto z-20">
-            <div className="bg-white px-3 pt-2 pb-3 border-t border-gray-200 shadow-[0_-1px_4px_rgba(0,0,0,0.05)]">
+            <div className="bg-white px-3 pt-2 pb-3 border-t border-gray-200 shadow-[0_-1px_4px_rgba(0,0,0,0.05)]" style={{paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))'}}>
                 <div className="flex justify-around items-center">
                     {navItems.map(item => {
-                        const isActive = currentPage === item.id || (item.id === 'clubs' && currentPage.startsWith('club'));
+                        const isActive = location.pathname.startsWith(item.path);
                         const IconComponent = item.icon;
                         return (
-                            <a href="#" key={item.id} onClick={(e) => { e.preventDefault(); setCurrentPage(item.id); }} className="text-center p-2 rounded-lg w-1/5">
+                            <Link to={item.path} key={item.path} onClick={(e) => {
+                                if (item.path === '/benefits') {
+                                    e.preventDefault();
+                                    alert('서비스 준비중입니다.');
+                                }
+                            }} className="text-center p-2 rounded-lg w-1/5">
                                 <IconComponent className={`w-6 h-6 mx-auto ${isActive ? 'text-[#00462A]' : 'text-gray-500'}`} />
                                 <span className={`text-xs font-medium ${isActive ? 'text-[#00462A] font-bold' : 'text-gray-500'}`}>{item.label}</span>
-                            </a>
+                            </Link>
                         );
                     })}
                 </div>
@@ -1737,213 +2127,77 @@ const BottomNav = ({ currentPage, setCurrentPage }) => {
     );
 };
 
+// --- 라우트 보호 컴포넌트 ---
+const ProtectedRoute = ({ children }) => {
+    const { currentUser, loading } = useAuth();
 
-// =================================================================
-// ▼▼▼ 메인 App 컴포넌트 ▼▼▼
-// =================================================================
-function AppContent() {
-    const { currentUser } = useAuth();
-    const [page, setPage] = useState('home');
-    const [pageHistory, setPageHistory] = useState([{page: 'home', param: null}]);
-    const [pageParam, setPageParam] = useState(null);
-    
-    const [posts, setPosts] = useState([]);
-    const [buanNews, setBuanNews] = useState([]);
-    const [followingPosts, setFollowingPosts] = useState([]);
-    const [userEvents, setUserEvents] = useState({});
-    const [chats, setChats] = useState([]);
-    const [likedNews, setLikedNews] = useState([]);
-    
-    useEffect(() => {
-        if (!currentUser?.uid) {
-            setPosts([]); setFollowingPosts([]); setUserEvents({}); setChats([]); setBuanNews([]);
-            return;
-        }
-
-        const unsubscribes = [];
-        setLikedNews(currentUser.likedNews || []);
-        unsubscribes.push(onSnapshot(query(collection(db, "news"), orderBy("createdAt", "desc")), (snapshot) => setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))) );
-        unsubscribes.push(onSnapshot(query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50)), (snapshot) => setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))) );
-        unsubscribes.push(onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
-            const eventsData = {};
-            snapshot.docs.forEach(doc => {
-                const event = { id: doc.id, ...doc.data() };
-                if (!eventsData[event.date]) eventsData[event.date] = [];
-                eventsData[event.date].push(event);
-            });
-            setUserEvents(eventsData);
-        }));
-        unsubscribes.push(onSnapshot(query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid)), async (snapshot) => {
-            const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
-                const chatData = docSnap.data();
-                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
-                if (!otherMemberId) return null;
-                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
-                return { id: docSnap.id, ...chatData, otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId }, };
-            }));
-            setChats(chatsData.filter(Boolean));
-        }));
-        if (currentUser.following?.length > 0) {
-            unsubscribes.push(onSnapshot(query(collection(db, "posts"), where('authorId', 'in', currentUser.following.slice(0, 10)), orderBy("createdAt", "desc"), limit(30)), (snapshot) => {
-                setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            }));
-        } else {
-             setFollowingPosts([]);
-        }
-
-        return () => unsubscribes.forEach(unsub => unsub());
-    }, [currentUser]);
-
-    const handleLikeNews = async (newsItem) => {
-        if (!currentUser) return;
-        
-        const userRef = doc(db, 'users', currentUser.uid);
-        const eventsRef = collection(db, 'users', currentUser.uid, 'events');
-        
-        try {
-            const userSnap = await getDoc(userRef);
-            const currentLikedNews = userSnap.data()?.likedNews || [];
-            const isLiked = currentLikedNews.includes(newsItem.id);
-
-            if (isLiked) {
-                await updateDoc(userRef, { likedNews: arrayRemove(newsItem.id) });
-                const q = query(eventsRef, where("newsId", "==", newsItem.id));
-                const querySnapshot = await getDocs(q);
-                querySnapshot.forEach(async (docSnap) => {
-                    await deleteDoc(docSnap.ref);
-                });
-            } else {
-                await updateDoc(userRef, { likedNews: arrayUnion(newsItem.id) });
-                if (newsItem.date) {
-                    await addDoc(eventsRef, {
-                        title: newsItem.title,
-                        date: newsItem.date,
-                        createdAt: Timestamp.now(),
-                        type: 'news',
-                        newsId: newsItem.id
-                    });
-                }
-            }
-        } catch (error) {
-            console.error("Error liking news:", error);
-        }
-    };
-    
-    const handleDeleteNews = async (newsId, imagePath) => {
-        if(!currentUser || currentUser.uid !== ADMIN_UID) return;
-        if (window.confirm("정말로 이 소식을 삭제하시겠습니까?")) {
-            try {
-                if (imagePath) await deleteObject(ref(storage, imagePath));
-                await deleteDoc(doc(db, 'news', newsId));
-                alert("소식이 삭제되었습니다.");
-            } catch (error) { alert(`소식 삭제 중 오류: ${error.message}`); }
-        }
-    };
-
-    const setCurrentPage = (pageName, param = null) => {
-        if (['benefits'].includes(pageName)) {
-            alert('서비스 준비중입니다.');
-            return;
-        }
-        const newPage = pageName === 'clubs' ? 'clubList' : pageName;
-        setPage(newPage);
-        setPageParam(param);
-        setPageHistory(prev => [...prev, {page: newPage, param: param}]);
-    };
-    
-    const goBack = useCallback(() => {
-        setPageHistory(prevHistory => {
-            if (prevHistory.length <= 1) {
-                 setPage('home');
-                 setPageParam(null);
-                 return [{page: 'home', param: null}];
-            }
-            const newHistory = prevHistory.slice(0, prevHistory.length - 1);
-            const lastPage = newHistory[newHistory.length - 1];
-            setPage(lastPage.page || 'home');
-            setPageParam(lastPage.param || null);
-            return newHistory;
-        });
-    }, []);
-
-    const renderHeader = () => {
-        const hideHeaderOn = ['write', 'editPost', 'writeNews', 'editNews', 'editProfile', 'clubCreate', 'clubDetail'];
-        if (hideHeaderOn.includes(page)) return null;
-
-        const mainPagesWithLogo = ['home'];
-        const isSubPage = !mainPagesWithLogo.includes(page) && pageHistory.length > 1;
-        
-        const titleMap = {
-            'home': '마을엔 부안', 'news': '소식', 'board': '게시판', 'clubList': '모임',
-            'calendar': '달력', 'search': '검색', 'notifications': '알림',
-            'chatList': '채팅', 'userProfile': '프로필', 'postDetail': '게시글',
-            'chatPage': pageParam?.recipientName || '채팅'
-        };
-        const title = titleMap[page] || "";
-
+    if (loading) {
         return (
-             <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200">
-                <div className="flex items-center gap-2 flex-1">
-                    {isSubPage ? (<button onClick={goBack} className="p-1 -ml-2"><ArrowLeft size={24} /></button>) : (<Logo size={28} />)}
-                    <h1 className="text-xl font-bold text-gray-800 truncate">{title}</h1>
-                </div>
-                <div className="flex items-center gap-3">
-                     <button onClick={() => setCurrentPage('search')} className="p-1"><Search size={24} className="text-gray-600" /></button>
-                     <button onClick={() => setCurrentPage('chatList')} className="p-1"><MessageSquare size={24} className="text-gray-600" /></button>
-                     <button onClick={() => setCurrentPage('notifications')} className="p-1"><Bell size={24} className="text-gray-600" /></button>
-                     {currentUser && (
-                         <button onClick={() => setCurrentPage('userProfile', currentUser.uid)}>
-                             {currentUser.photoURL ? 
-                                <img src={currentUser.photoURL} alt="p" className="w-8 h-8 rounded-full bg-gray-200 object-cover"/> :
-                                <UserCircle size={32} className="text-gray-400"/>
-                             }
-                         </button>
-                     )}
-                </div>
-            </header>
+            <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
+                <LoadingSpinner />
+            </div>
         );
-    };
+    }
+    
+    if (!currentUser) {
+        return <Navigate to="/start" replace />;
+    }
+    
+    if (!currentUser.city) {
+        return <Navigate to="/region-setup" replace />;
+    }
 
-    const renderPage = () => {
-        const pageProps = { setCurrentPage, goBack, pageParam };
+    return children;
+};
 
-        switch (page) {
-            case 'home': return <HomePage {...pageProps} posts={posts} buanNews={buanNews} handleDeleteNews={handleDeleteNews} handleLikeNews={handleLikeNews} likedNews={likedNews} followingPosts={followingPosts} userEvents={userEvents} />;
-            case 'news': return <NewsPage {...pageProps} buanNews={buanNews} handleDeleteNews={handleDeleteNews} handleLikeNews={handleLikeNews} likedNews={likedNews} />;
-            case 'board': return <BoardPage {...pageProps} />;
-            case 'postDetail': return <PostDetailPage {...pageProps} postId={pageParam} />;
-            case 'write': return <WritePage {...pageProps} />;
-            case 'editPost': return <WritePage {...pageProps} itemToEdit={pageParam} />;
-            case 'writeNews': return <NewsWritePage {...pageProps} />;
-            case 'editNews': return <NewsWritePage {...pageProps} itemToEdit={pageParam} />;
-            case 'calendar': return <CalendarPage {...pageProps} userEvents={userEvents} />;
-            case 'userProfile': return <UserProfilePage {...pageProps} userId={pageParam} />;
-            case 'editProfile': return <ProfileEditPage {...pageProps} />;
-            case 'search': return <SearchPage {...pageProps} />;
-            case 'notifications': return <NotificationsPage />;
-            case 'chatList': return <ChatListPage {...pageProps} chats={chats} />;
-            case 'chatPage': return <ChatPage {...pageProps} />;
-            case 'clubList': return <ClubListPage {...pageProps} />;
-            case 'clubCreate': return <ClubCreatePage {...pageProps} />;
-            case 'clubDetail': return <ClubDetailPage {...pageProps} />;
-            default: return <HomePage {...pageProps} posts={posts} buanNews={buanNews} handleDeleteNews={handleDeleteNews} handleLikeNews={handleLikeNews} likedNews={likedNews} followingPosts={followingPosts} userEvents={userEvents} />;
-        }
-    };
-
-    if (!currentUser) return <AuthPage />;
-
-    const showNav = !['write', 'editPost', 'writeNews', 'editNews', 'postDetail', 'chatPage', 'editProfile', 'clubCreate', 'clubDetail'].includes(page);
-    const mainContentStyle = { paddingBottom: showNav ? '80px' : '0', minHeight: 'calc(100vh - 60px)', height: page === 'chatPage' ? 'calc(100vh - 60px)' : 'auto' };
-
+// --- 최상위 App 컴포넌트 ---
+function App() {
     return (
-        <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
-            {renderHeader()}
-            <main className="bg-white" style={mainContentStyle}>{renderPage()}</main>
-            {showNav && <BottomNav currentPage={page} setCurrentPage={setCurrentPage} />}
-        </div>
+        <AuthProvider>
+            <BrowserRouter>
+                <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
+                    <Routes>
+                        {/* 로그인/지역설정 필요 없는 페이지 */}
+                        <Route path="/start" element={<StartPage />} />
+                        
+                        {/* 로그인 및 지역설정이 필요하지만, ProtectedRoute 안에는 둘 수 없는 페이지 */}
+                        <Route path="/region-setup" element={<RegionSetupPage />} />
+                        
+                        {/* 로그인이 필요한 모든 페이지들 */}
+                        <Route path="/*" element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <Routes>
+                                        <Route path="/home" element={<HomePage />} />
+                                        <Route path="/news" element={<NewsPage />} />
+                                        <Route path="/news/write" element={<NewsWritePage />} />
+                                        <Route path="/news/edit/:newsId" element={<NewsWritePage />} />
+                                        <Route path="/board" element={<BoardPage />} />
+                                        <Route path="/post/write" element={<WritePage />} />
+                                        <Route path="/post/edit/:postId" element={<WritePage />} />
+                                        <Route path="/post/:postId" element={<PostDetailPage />} />
+                                        <Route path="/calendar" element={<CalendarPage />} />
+                                        <Route path="/profile/:userId" element={<UserProfilePage />} />
+                                        <Route path="/profile/edit" element={<ProfileEditPage />} />
+                                        <Route path="/search" element={<SearchPage />} />
+                                        <Route path="/notifications" element={<NotificationsPage />} />
+                                        <Route path="/chats" element={<ChatListPage />} />
+                                        <Route path="/chat/:chatId" element={<ChatPage />} />
+                                        <Route path="/clubs" element={<ClubListPage />} />
+                                        <Route path="/clubs/create" element={<ClubCreatePage />} />
+                                        <Route path="/clubs/:clubId" element={<ClubDetailPage />} />
+                                        {/* 기본 경로는 home으로 */}
+                                        <Route path="*" element={<Navigate to="/home" replace />} />
+                                    </Routes>
+                                </MainLayout>
+                            </ProtectedRoute>
+                        } />
+                    </Routes>
+                </div>
+            </BrowserRouter>
+        </AuthProvider>
     );
 }
 
-export default function App() {
-    return (<AuthProvider><AppContent /></AuthProvider>);
-}
+export default App;
+// --- END OF FILE App.js ---
