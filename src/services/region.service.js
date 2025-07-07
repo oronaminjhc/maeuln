@@ -7,7 +7,7 @@
 const VWORLD_API_KEY = "34C2C771-670D-3794-9960-F90675A12A17";
 
 // Vworld 행정구역 검색 API 엔드포인트
-const API_ENDPOINT = "http://api.vworld.kr/req/data";
+const API_ENDPOINT = "https://api.vworld.kr/req/data";
 
 // ★★★ 수정된 부분 ★★★
 // 개발 환경 도메인. 배포 후에는 실제 도메인으로 변경해야 할 수 있습니다.
