@@ -20,5 +20,9 @@ const app = initializeApp(firebaseConfig);
 
 // 다른 파일에서 사용할 수 있도록 export
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// 데이터베이스 ID를 명시적으로 전달하여 초기화합니다.
+// 대부분의 경우 ID는 '(default)' 입니다.
+export const db = getFirestore(app, '(default)');
+
 export const storage = getStorage(app);
