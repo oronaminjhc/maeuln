@@ -315,11 +315,11 @@ const RegionSetupPage = () => {
         }
     }, [selectedRegion]);
 
-    const handleRegionChange = (e) => {
-        const selectedCode = e.target.value;
-        const selectedOption = regions.find(r => r.code === selectedCode);
-        setSelectedRegion(selectedOption || { code: '', name: '' });
-    };
+   const handleRegionChange = (e) => {
+    const selectedCode = e.target.value;
+    const selectedOption = regions.find(r => r.code === selectedCode);
+    setSelectedRegion(selectedOption || { code: '', name: '' });
+};
 
     const handleCityChange = (e) => {
         const selectedName = e.target.value;
@@ -362,11 +362,11 @@ const RegionSetupPage = () => {
                 <p className="text-gray-600 mt-2">서비스 이용을 위해<br />거주 지역을 설정해주세요.</p>
             </div>
             {apiLoading && !regions.length ? <LoadingSpinner/> : (
-                <div className="w-full max-w-xs space-y-4">
-                    <select value={selectedRegion.code} onChange={handleRegionChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]">
-                        <option value="">시/도 선택</option>
-                        {regions.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}
-                    </select>
+   <div className="w-full max-w-xs space-y-4">
+    <select value={selectedRegion.code} onChange={handleRegionChange} /*...*/ >
+        <option value="">시/도 선택</option>
+        {regions.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}
+    </select>
                     <select value={selectedCity.name} onChange={handleCityChange} disabled={!selectedRegion.code || apiLoading} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200">
                         <option value="">시/군/구 선택</option>
                         {apiLoading && selectedRegion.code ? <option>불러오는 중...</option> : cities.map(c => <option key={c.code} value={c.name}>{c.name}</option>)}
