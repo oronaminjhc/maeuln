@@ -248,7 +248,7 @@ const StartPage = () => {
         setLoading(true);
         setError('');
         try {
-            const provider = new OAuthProvider('kakao.com');
+            const provider = new OAuthProvider('oidc.kakao.com');
             provider.setCustomParameters({ prompt: 'select_account' });
             await signInWithPopup(auth, provider);
         } catch (error) {
