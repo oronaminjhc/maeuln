@@ -1516,6 +1516,8 @@ const ProfileEditPage = () => {
 
 // App.js 파일에서 기존 UserProfilePage 컴포넌트를 찾아서 아래 코드로 완전히 교체하세요.
 
+// App.js 파일에서 기존 UserProfilePage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const UserProfilePage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
@@ -1523,8 +1525,6 @@ const UserProfilePage = () => {
     const [profileUser, setProfileUser] = useState(null);
     const [userPosts, setUserPosts] = useState(null);
     const [allRegions, setAllRegions] = useState([]);
-    
-    // 관리자 모드(특정 지역 뷰) 활성화 여부 상태
     const [isAdminModeOn, setIsAdminModeOn] = useState(!!adminSelectedCity);
 
     useEffect(() => {
@@ -1538,7 +1538,7 @@ const UserProfilePage = () => {
                 sidos.forEach((sido, index) => {
                     allCitiesArrays[index].forEach(city => {
                         if (sido === city) {
-                            if (!flattenedRegions.find(r => r.city === sido)) {
+                             if (!flattenedRegions.find(r => r.city === sido)) {
                                 flattenedRegions.push({ region: sido, city: city, label: sido });
                             }
                         } else {
@@ -1575,7 +1575,6 @@ const UserProfilePage = () => {
     const handleAdminModeToggle = () => {
         const newAdminModeState = !isAdminModeOn;
         setIsAdminModeOn(newAdminModeState);
-        // 관리자 모드를 끄면 항상 전체 뷰로 돌아감
         if (!newAdminModeState) {
             setAdminSelectedCity(null);
         }
@@ -1586,6 +1585,27 @@ const UserProfilePage = () => {
         setAdminSelectedCity(value === "admin_view" ? null : value);
         navigate('/home'); 
     };
+
+    const handleFollow = async () => {
+        if (!currentUser || !profileUser) return;
+        const currentUserRef = doc(db, 'users', currentUser.uid);
+        const profileUserRef = doc(db, 'users', userId);
+        try {
+            const isCurrentlyFollowing = profileUser.followers?.includes(currentUser.uid);
+            const batch = writeBatch(db);
+            if (isCurrentlyFollowing) {
+                batch.update(currentUserRef, { following: arrayRemove(userId) });
+                batch.update(profileUserRef, { followers: arrayRemove(currentUser.uid) });
+            } else {
+                batch.update(currentUserRef, { following: arrayUnion(userId) });
+                batch.update(profileUserRef, { followers: arrayUnion(currentUser.uid) });
+            }
+            await batch.commit();
+        } catch (error) {
+            console.error("팔로우 처리 중 오류:", error);
+            alert("팔로우 처리 중 오류가 발생했습니다.");
+        }
+    };
     
     const handleLogout = async () => {
         if (window.confirm('로그아웃 하시겠습니까?')) {
@@ -1594,10 +1614,16 @@ const UserProfilePage = () => {
         }
     };
 
+    const handleMessage = () => {
+        const chatId = [currentUser.uid, userId].sort().join('_');
+        navigate(`/chat/${chatId}`, { state: { recipientId: userId, recipientName: profileUser.displayName }});
+    };
+
     if(profileUser === null || userPosts === null) return <LoadingSpinner />;
     if(!profileUser) return <div className='p-4 text-center'>사용자를 찾을 수 없습니다.</div>;
 
     const isMyProfile = currentUser.uid === userId;
+    const isFollowing = profileUser.followers?.includes(currentUser.uid) || false;
     const userLocation = (isMyProfile && currentUser.isAdmin) ? '관리자' : (profileUser.region && profileUser.city ? `${profileUser.region} ${profileUser.city}` : '지역 정보 없음');
 
     return (
@@ -1634,7 +1660,23 @@ const UserProfilePage = () => {
                     </>
                 ) : (
                     <>
-                        {/* 팔로우/메시지 버튼 (기존 로직과 동일) */}
+                        {/* ★★★ 디자인 요구사항이 반영된 버튼 UI ★★★ */}
+                        <button 
+                            onClick={handleFollow} 
+                            className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+                                isFollowing 
+                                ? 'bg-gray-200 text-[#00462A]' 
+                                : 'bg-[#00462A] text-white'
+                            }`}
+                        >
+                            {isFollowing ? '✓ 팔로잉' : '+ 팔로우'}
+                        </button>
+                        <button 
+                            onClick={handleMessage} 
+                            className="flex-1 px-4 py-2 text-sm font-semibold rounded-lg bg-white text-[#00462A] border border-[#00462A] flex items-center justify-center gap-1.5"
+                        >
+                             <MessageSquare size={16} /> 메시지
+                        </button>
                     </>
                 )}
             </div>
