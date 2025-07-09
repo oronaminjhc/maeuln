@@ -42,7 +42,7 @@ export const regionData = [
     sigungu: [ '서귀포시', '제주시' ],
   },
   { sido: '부산광역시', sigungu: [ '부산광역시' ] },
-  { sido: '대구광역시', sigungu: [ '대구광역시 ] },
+  { sido: '대구광역시', sigungu: [ '대구광역시' ] },
   { sido: '인천광역시', sigungu: [ '인천광역시' ] },
   { sido: '광주광역시', sigungu: [ '광주광역시' ] },
   { sido: '대전광역시', sigungu: [ '대전광역시' ] },

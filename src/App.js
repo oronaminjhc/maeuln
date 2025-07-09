@@ -390,12 +390,11 @@ const RegionSetupPage = () => {
 const HomePage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
-    const [posts, setPosts] = useState([]);
-    const [buanNews, setBuanNews] = useState([]);
+    const [posts, setPosts] = useState(null);
+    const [buanNews, setBuanNews] = useState(null);
     const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
     const [likedNews, setLikedNews] = useState([]);
-    const [loading, setLoading] = useState(true);
 
     const userCity = currentUser?.city;
     const isAdmin = currentUser.uid === ADMIN_UID;
@@ -407,7 +406,6 @@ const HomePage = () => {
 
     useEffect(() => {
         if (!currentUser?.city) return;
-        setLoading(true);
 
         const unsubscribes = [];
 
@@ -634,7 +632,10 @@ const NewsPage = () => {
         : buanNews.filter(news => news.tags && news.tags.includes(activeTag));
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
-    if(loading) return <LoadingSpinner />;
+   if (posts === null || buanNews === null) {
+        return <LoadingSpinner />;
+    }
+};
 
     return (
         <div className="p-4">

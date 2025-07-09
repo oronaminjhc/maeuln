@@ -23,6 +23,6 @@ export const auth = getAuth(app);
 
 // 데이터베이스 ID를 명시적으로 전달하여 초기화합니다.
 // 대부분의 경우 ID는 '(default)' 입니다.
-export const db = getFirestore(app, '(default)');
+export const db = getFirestore(app);
 
 export const storage = getStorage(app);
