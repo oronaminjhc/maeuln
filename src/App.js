@@ -1870,6 +1870,153 @@ const ChatListPage = () => {
         </div>
     );
 };
+
+// App.js 파일에서 ChatListPage 컴포넌트가 끝나는 지점 다음에 이 코드를 붙여넣으세요.
+
+const ChatPage = () => {
+    const { currentUser } = useAuth();
+    const { chatId } = useParams();
+    const location = useLocation();
+    
+    const recipientId = location.state?.recipientId;
+
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const [isAllowed, setIsAllowed] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const messagesEndRef = useRef(null);
+    
+    useEffect(() => {
+        if (!chatId || !currentUser) return;
+
+        let unsubscribe = () => {};
+
+        const checkPermissionAndFetchMessages = async () => {
+            const chatRef = doc(db, 'chats', chatId);
+            
+            try {
+                unsubscribe = onSnapshot(chatRef, (chatSnap) => {
+                    if (chatSnap.exists()) {
+                        const data = chatSnap.data();
+                        if (data.members?.includes(currentUser.uid)) {
+                            setIsAllowed(true);
+                            const messagesRef = collection(chatRef, 'messages');
+                            const q = query(messagesRef, orderBy('createdAt', 'asc'));
+                            
+                            const messagesUnsubscribe = onSnapshot(q, (snapshot) => {
+                                setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                            });
+                            return messagesUnsubscribe;
+                        } else {
+                            console.warn("접근 권한이 없습니다.");
+                            setIsAllowed(false);
+                        }
+                    } else {
+                        console.warn("채팅방이 존재하지 않지만, 첫 메시지 전송 시 생성됩니다.");
+                        setIsAllowed(true); 
+                    }
+                    setLoading(false);
+                });
+            } catch (error) {
+                console.error("Error checking chat permission:", error);
+                setLoading(false);
+            }
+        };
+
+        checkPermissionAndFetchMessages();
+
+        return () => {
+            if (typeof unsubscribe === 'function') {
+                unsubscribe();
+            }
+        };
+    }, [chatId, currentUser]);
+    
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        
+        if (!newMessage.trim() || !recipientId) {
+            if (!recipientId) console.error("Recipient ID is missing.");
+            return;
+        }
+
+        const messageData = {
+            text: newMessage,
+            senderId: currentUser.uid,
+            createdAt: Timestamp.now(),
+        };
+        
+        try {
+            const chatRef = doc(db, 'chats', chatId);
+            const chatSnap = await getDoc(chatRef);
+            const batch = writeBatch(db);
+
+            if (!chatSnap.exists()) {
+                batch.set(chatRef, {
+                    members: [currentUser.uid, recipientId],
+                    lastMessage: messageData,
+                });
+            } else {
+                const data = chatSnap.data();
+                if (!data.members?.includes(currentUser.uid)) {
+                    batch.update(chatRef, { members: arrayUnion(currentUser.uid) });
+                }
+                batch.update(chatRef, { lastMessage: messageData });
+            }
+            
+            const newMessageRef = doc(collection(chatRef, 'messages'));
+            batch.set(newMessageRef, messageData);
+
+            await batch.commit();
+            setNewMessage('');
+        } catch (error) {
+            console.error("Error sending message:", error);
+            alert("메시지 전송 중 오류가 발생했습니다. 권한을 확인해주세요.");
+        }
+    };
+
+    if (loading) {
+        return <LoadingSpinner />;
+    }
+
+    if (!isAllowed) {
+        return <div className="p-4 text-center text-red-500">이 채팅방에 접근할 권한이 없습니다.</div>;
+    }
+    
+    return (
+         <div className="flex flex-col h-full"> 
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.senderId === currentUser.uid ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-xs p-3 rounded-lg ${msg.senderId === currentUser.uid ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
+                            <p>{msg.text}</p>
+                        </div>
+                    </div>
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+            <div className="bg-white border-t p-3">
+                 <form onSubmit={handleSendMessage} className="relative flex items-center">
+                    <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="메시지를 입력하세요."
+                        className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                    />
+                    <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
+                        <Send size={20} />
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 const ClubListPage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
