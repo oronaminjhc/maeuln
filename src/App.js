@@ -335,34 +335,39 @@ const RegionSetupPage = () => {
         }
     }, [selectedRegion]);
 
-    const handleSaveRegion = async () => {
-        if (!selectedRegion || !selectedCity) {
-            setError('거주 지역을 모두 선택해주세요.');
-            return;
-        }
-        setLoading(true);
-        setError('');
-        try {
-            const userRef = doc(db, "users", currentUser.uid);
-            await setDoc(userRef, {
-                displayName: currentUser.displayName,
-                email: currentUser.email,
-                photoURL: currentUser.photoURL,
-                region: selectedRegion,
-                city: selectedCity,
-                town: '', 
-                createdAt: Timestamp.now(),
- 		followerCount: 0, // <-- 이 필드 추가
-    		followers: [],
-   		following: [],
-    		likedNews: []
-	}, { merge: true });
-        } catch (e) {
-            console.error("Region save error:", e);
-            setError("저장에 실패했습니다. 다시 시도해주세요.");
-            setLoading(false);
-        }
-    };
+// RegionSetupPage 컴포넌트의 handleSaveRegion 함수를 수정합니다.
+
+const handleSaveRegion = async () => {
+    if (!selectedRegion || !selectedCity) {
+        setError('거주 지역을 모두 선택해주세요.');
+        return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+        const userRef = doc(db, "users", currentUser.uid);
+        await setDoc(userRef, {
+            displayName: currentUser.displayName,
+            email: currentUser.email,
+            photoURL: currentUser.photoURL,
+            region: selectedRegion,
+            city: selectedCity,
+            town: '', 
+            createdAt: Timestamp.now(),
+            followers: [],
+            following: [],
+            likedNews: []
+        }, { merge: true }); 
+        
+        // ★★★ 이 부분을 명시적으로 추가해도 좋지만,
+        // 위에서 수정한 ProtectedRoute가 이 역할을 이미 잘 수행할 것입니다.
+        // navigate('/home'); 
+        // 하지만 만약을 위해 추가해두면 더 확실합니다.
+        
+    } catch (e) {
+        // ...
+    }
+};
 
     const isCityDropdownDisabled = !selectedRegion || apiLoading || cities.length === 1;
 
@@ -2316,8 +2321,11 @@ const BottomNav = () => {
 
 // App.js에서 ProtectedRoute를 이 코드로 교체하세요.
 
-const ProtectedRoute = ({ children }) => {
+// App.js에서 기존 ProtectedRoute 컴포넌트를 이 코드로 완전히 교체하세요.
+
+const ProtectedRoute = ({ children, isPublicPage = false }) => {
     const { currentUser, loading } = useAuth();
+    const location = useLocation();
 
     if (loading) {
         return (
@@ -2327,36 +2335,63 @@ const ProtectedRoute = ({ children }) => {
         );
     }
     
-    if (!currentUser) {
-        return <Navigate to="/start" replace />;
+    // --- 1. 로그인 했고, 지역 설정까지 마친 사용자 ---
+    if (currentUser && currentUser.city) {
+        // 이런 사용자가 /start나 /region-setup에 접근하려 하면 /home으로 보냄
+        if (isPublicPage) {
+            return <Navigate to="/home" state={{ from: location }} replace />;
+        }
+        // 그 외의 페이지는 정상적으로 보여줌
+        return children;
     }
     
-    // ★★★ 수정: Firestore 데이터 로드 완료 여부까지 확인
-    if (!currentUser.isFirestoreDataLoaded) {
-        return (
-            <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
-                <LoadingSpinner />
-            </div>
-        );
-    }
-    
-    // 관리자가 아니고 지역 정보가 없다면 설정 페이지로 이동
-    if (!currentUser.isAdmin && !currentUser.city) {
-        return <Navigate to="/region-setup" replace />;
+    // --- 2. 로그인 했지만, 지역 설정은 아직 안 한 사용자 ---
+    if (currentUser && !currentUser.city) {
+        // 관리자가 아니면 /region-setup으로 보냄
+        if (!currentUser.isAdmin) {
+             // /region-setup 페이지가 아니라면 거기로 보냄
+            if (location.pathname !== '/region-setup') {
+                return <Navigate to="/region-setup" state={{ from: location }} replace />;
+            }
+             // /region-setup 페이지라면 정상적으로 보여줌
+            return children;
+        }
+        // 관리자는 지역 설정 없이도 통과
+        return children;
     }
 
+    // --- 3. 로그인 안 한 사용자 ---
+    if (!currentUser) {
+        // /start나 /region-setup 같은 공개 페이지는 접근 허용
+        if (isPublicPage) {
+            return children;
+        }
+        // 그 외의 페이지는 /start로 보냄
+        return <Navigate to="/start" state={{ from: location }} replace />;
+    }
+
+    // 위 모든 경우에 해당하지 않으면 정상적으로 페이지 보여줌
     return children;
 };
-
 // --- 최상위 App 컴포넌트 ---
+// App.js에서 최상위 App 컴포넌트를 이 코드로 완전히 교체하세요.
+
 function App() {
     return (
         <AuthProvider>
             <BrowserRouter>
                 <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
                     <Routes>
-                        <Route path="/start" element={<StartPage />} />
-                        <Route path="/region-setup" element={<RegionSetupPage />} />
+                        <Route path="/start" element={
+                            <ProtectedRoute isPublicPage={true}>
+                                <StartPage />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/region-setup" element={
+                            <ProtectedRoute isPublicPage={true}>
+                                <RegionSetupPage />
+                            </ProtectedRoute>
+                        } />
                         
                         <Route path="/*" element={
                             <ProtectedRoute>
