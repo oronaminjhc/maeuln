@@ -77,48 +77,46 @@ const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [adminSelectedCity, setAdminSelectedCity] = useState(null); 
 
-  // App.js에서 AuthProvider의 useEffect를 이 코드로 교체하세요.
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const userRef = doc(db, "users", user.uid);
+                const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
+                    let finalUser = { ...user };
 
-useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-            const userRef = doc(db, "users", user.uid);
-            const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
-                let finalUser = { ...user };
-                
-                // photoURL이 있고 http로 시작하면 https로 변경
-                if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
-                    finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
-                }
-
-                if (userSnap.exists()) {
-                    const userData = userSnap.data();
-                    let firestorePhotoURL = userData.photoURL || finalUser.photoURL;
-                    if (firestorePhotoURL && firestorePhotoURL.startsWith('http://')) {
-                        firestorePhotoURL = firestorePhotoURL.replace('http://', 'https');
+                    // ★★★ photoURL을 https로 변환하는 로직 ★★★
+                    if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
+                        finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
                     }
-                    finalUser = { ...user, ...userData, photoURL: firestorePhotoURL, isFirestoreDataLoaded: true };
-                } else {
-                    finalUser.isFirestoreDataLoaded = true;
-                }
 
-                finalUser.isAdmin = user.uid === ADMIN_UID;
-                setCurrentUser(finalUser);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        let firestorePhotoURL = userData.photoURL || finalUser.photoURL;
+                        if (firestorePhotoURL && firestorePhotoURL.startsWith('http://')) {
+                            firestorePhotoURL = firestorePhotoURL.replace('http://', 'https://');
+                        }
+                        finalUser = { ...user, ...userData, photoURL: firestorePhotoURL, isFirestoreDataLoaded: true };
+                    } else {
+                        finalUser.isFirestoreDataLoaded = true;
+                    }
+
+                    finalUser.isAdmin = user.uid === ADMIN_UID;
+                    setCurrentUser(finalUser);
+                    setLoading(false);
+                }, (error) => {
+                    console.error("User doc snapshot error:", error);
+                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
+                    setCurrentUser(finalUser);
+                    setLoading(false);
+                });
+                return () => userUnsubscribe();
+            } else {
+                setCurrentUser(null);
                 setLoading(false);
-            }, (error) => {
-                console.error("User doc snapshot error:", error);
-                const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
-                setCurrentUser(finalUser);
-                setLoading(false);
-            });
-            return () => userUnsubscribe();
-        } else {
-            setCurrentUser(null);
-            setLoading(false);
-        }
-    });
-    return () => unsubscribe();
-}, []);
+            }
+        });
+        return () => unsubscribe();
+    }, []);
 
     const value = { currentUser, loading, adminSelectedCity, setAdminSelectedCity };
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
