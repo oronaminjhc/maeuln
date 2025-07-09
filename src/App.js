@@ -299,6 +299,8 @@ const StartPage = () => {
 
 const RegionSetupPage = () => {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
+
     const [regions, setRegions] = useState([]);
     const [cities, setCities] = useState([]);
     const [selectedRegion, setSelectedRegion] = useState('');
@@ -360,6 +362,9 @@ const RegionSetupPage = () => {
                 following: [],
                 likedNews: []
             }, { merge: true });
+
+	navigate('/home');
+
         } catch (e) {
             console.error("Region save error:", e);
             setError("저장에 실패했습니다. 다시 시도해주세요.");
