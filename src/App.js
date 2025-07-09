@@ -2323,10 +2323,13 @@ const BottomNav = () => {
 
 // App.js에서 기존 ProtectedRoute 컴포넌트를 이 코드로 완전히 교체하세요.
 
-const ProtectedRoute = ({ children, isPublicPage = false }) => {
+// App.js 파일에서 기존 ProtectedRoute 컴포넌트를 이 코드로 완전히 교체하세요.
+
+const ProtectedRoute = ({ children }) => {
     const { currentUser, loading } = useAuth();
     const location = useLocation();
 
+    // 1. 최우선: 로딩 중일 때는 무조건 로딩 스피너 표시
     if (loading) {
         return (
             <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
@@ -2334,90 +2337,85 @@ const ProtectedRoute = ({ children, isPublicPage = false }) => {
             </div>
         );
     }
+
+    // 2. 로그인하지 않은 사용자 처리
+    if (!currentUser) {
+        // /start 페이지에 있다면 그대로 머물게 함
+        if (location.pathname === '/start') {
+            return children;
+        }
+        // 다른 페이지에 접근하려고 하면 /start로 보냄
+        return <Navigate to="/start" replace />;
+    }
+
+    // --- 여기서부터는 currentUser가 있는 경우 (로그인 한 사용자) ---
     
-    // --- 1. 로그인 했고, 지역 설정까지 마친 사용자 ---
-    if (currentUser && currentUser.city) {
-        // 이런 사용자가 /start나 /region-setup에 접근하려 하면 /home으로 보냄
-        if (isPublicPage) {
-            return <Navigate to="/home" state={{ from: location }} replace />;
+    // 3. 관리자 처리
+    if (currentUser.isAdmin) {
+        // 관리자가 /start나 /region-setup에 있다면 /home으로 보냄
+        if (location.pathname === '/start' || location.pathname === '/region-setup') {
+            return <Navigate to="/home" replace />;
         }
         // 그 외의 페이지는 정상적으로 보여줌
         return children;
     }
     
-    // --- 2. 로그인 했지만, 지역 설정은 아직 안 한 사용자 ---
-    if (currentUser && !currentUser.city) {
-        // 관리자가 아니면 /region-setup으로 보냄
-        if (!currentUser.isAdmin) {
-             // /region-setup 페이지가 아니라면 거기로 보냄
-            if (location.pathname !== '/region-setup') {
-                return <Navigate to="/region-setup" state={{ from: location }} replace />;
+    // 4. 일반 사용자 처리
+    if (!currentUser.isAdmin) {
+        // 지역 정보가 있는 경우 (설정 완료)
+        if (currentUser.city) {
+            // /start나 /region-setup에 있다면 /home으로 보냄
+            if (location.pathname === '/start' || location.pathname === '/region-setup') {
+                return <Navigate to="/home" replace />;
             }
-             // /region-setup 페이지라면 정상적으로 보여줌
+            // 그 외의 페이지는 정상적으로 보여줌
             return children;
         }
-        // 관리자는 지역 설정 없이도 통과
-        return children;
-    }
-
-    // --- 3. 로그인 안 한 사용자 ---
-    if (!currentUser) {
-        // /start나 /region-setup 같은 공개 페이지는 접근 허용
-        if (isPublicPage) {
+        
+        // 지역 정보가 없는 경우 (설정 필요)
+        if (!currentUser.city) {
+            // /region-setup이 아닌 다른 곳에 있다면 /region-setup으로 보냄
+            if (location.pathname !== '/region-setup') {
+                return <Navigate to="/region-setup" replace />;
+            }
+            // /region-setup 페이지에 있다면 정상적으로 보여줌
             return children;
         }
-        // 그 외의 페이지는 /start로 보냄
-        return <Navigate to="/start" state={{ from: location }} replace />;
     }
 
-    // 위 모든 경우에 해당하지 않으면 정상적으로 페이지 보여줌
+    // 위 모든 조건에 해당하지 않는 예외적인 경우를 위해 기본 children 반환
     return children;
 };
 // --- 최상위 App 컴포넌트 ---
 // App.js에서 최상위 App 컴포넌트를 이 코드로 완전히 교체하세요.
+
+// 최상위 App 컴포넌트
 
 function App() {
     return (
         <AuthProvider>
             <BrowserRouter>
                 <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
+                    {/* 모든 라우트를 ProtectedRoute로 감쌉니다. */}
                     <Routes>
-                        <Route path="/start" element={
-                            <ProtectedRoute isPublicPage={true}>
-                                <StartPage />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/region-setup" element={
-                            <ProtectedRoute isPublicPage={true}>
-                                <RegionSetupPage />
-                            </ProtectedRoute>
-                        } />
-                        
                         <Route path="/*" element={
                             <ProtectedRoute>
-                                <MainLayout>
-                                    <Routes>
-                                        <Route path="/home" element={<HomePage />} />
-                                        <Route path="/news" element={<NewsPage />} />
-                                        <Route path="/news/write" element={<NewsWritePage />} />
-                                        <Route path="/news/edit/:newsId" element={<NewsWritePage />} />
-                                        <Route path="/board" element={<BoardPage />} />
-                                        <Route path="/post/write" element={<WritePage />} />
-                                        <Route path="/post/edit/:postId" element={<WritePage />} />
-                                        <Route path="/post/:postId" element={<PostDetailPage />} />
-                                        <Route path="/calendar" element={<CalendarPage />} />
-                                        <Route path="/profile/:userId" element={<UserProfilePage />} />
-                                        <Route path="/profile/edit" element={<ProfileEditPage />} />
-                                        <Route path="/search" element={<SearchPage />} />
-                                        <Route path="/notifications" element={<NotificationsPage />} />
-                                        <Route path="/chats" element={<ChatListPage />} />
-                                        <Route path="/chat/:chatId" element={<ChatPage />} />
-                                        <Route path="/clubs" element={<ClubListPage />} />
-                                        <Route path="/clubs/create" element={<ClubCreatePage />} />
-                                        <Route path="/clubs/:clubId" element={<ClubDetailPage />} />
-                                        <Route path="*" element={<Navigate to="/home" replace />} />
-                                    </Routes>
-                                </MainLayout>
+                                <Routes>
+                                    {/* 공개 라우트 */}
+                                    <Route path="/start" element={<StartPage />} />
+                                    <Route path="/region-setup" element={<RegionSetupPage />} />
+
+                                    {/* 보호된 라우트 */}
+                                    <Route path="/*" element={
+                                        <MainLayout>
+                                            <Routes>
+                                                <Route path="/home" element={<HomePage />} />
+                                                {/* ... 나머지 모든 페이지 라우트 ... */}
+                                                <Route path="*" element={<Navigate to="/home" replace />} />
+                                            </Routes>
+                                        </MainLayout>
+                                    } />
+                                </Routes>
                             </ProtectedRoute>
                         } />
                     </Routes>
