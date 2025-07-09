@@ -1810,58 +1810,6 @@ const NotificationsPage = () => {
     return ( <div className="p-4"> {notifications.map(notif => ( <div key={notif.id} className="p-3 border-b border-gray-200"> <p className="text-sm">{notif.text}</p> <p className="text-xs text-gray-500 mt-1">{notif.time}</p> </div> ))} </div> );
 };
 
-const ChatListPage = () => {
-    const { currentUser } = useAuth();
-    const navigate = useNavigate();
-    const [chats, setChats] = useState(null);
-
-    useEffect(() => {
-        const q = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
-        const unsubscribe = onSnapshot(q, async (snapshot) => {
-            const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
-                const chatData = docSnap.data();
-                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
-                if (!otherMemberId) return null;
-                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
-                return { 
-                    id: docSnap.id, 
-                    ...chatData, 
-                    otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId }, 
-                };
-            }));
-            setChats(chatsData.filter(Boolean));
-        });
-        return () => unsubscribe();
-    }, [currentUser.uid]);
-
-    if (chats === null) return <LoadingSpinner />;
-
-    return (
-        <div className="p-4">
-            <h2 className="text-xl font-bold mb-4">채팅 목록</h2>
-            <div className="space-y-3">
-                {chats.length > 0 ? chats.map(chat => (
-                    <div key={chat.id} onClick={() => navigate(`/chat/${chat.id}`, { state: { recipientId: chat.otherUser.uid, recipientName: chat.otherUser.displayName }})}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-gray-300 flex-shrink-0 overflow-hidden flex items-center justify-center">
-                            {chat.otherUser.photoURL ? <img src={chat.otherUser.photoURL} alt={chat.otherUser.displayName} className="w-full h-full object-cover" /> : <UserCircle size={48} className="text-gray-400"/>}
-                        </div>
-                        <div className="flex-1 overflow-hidden">
-                            <h3 className="font-bold">{chat.otherUser.displayName}</h3>
-                            <p className="text-sm text-gray-500 truncate">{chat.lastMessage?.text || '메시지를 보내보세요.'}</p>
-                        </div>
-                    </div>
-                )) : (
-                    <p className="text-center text-gray-500 py-10">진행중인 대화가 없습니다.</p>
-                )}
-            </div>
-        </div>
-    );
-};
-
-// App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
-
-// App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
 
 // App.js 파일에서 기존 ChatListPage 컴포넌트를 이 코드로 완전히 교체하세요.
 
