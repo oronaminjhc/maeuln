@@ -70,10 +70,11 @@ const storage = getStorage(app);
 
 const AuthContext = createContext();
 
+// App.js에서 AuthProvider를 이 코드로 교체하세요.
+
 const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    // ★★★ 추가: 관리자가 선택한 지역을 임시 저장할 상태
     const [adminSelectedCity, setAdminSelectedCity] = useState(null); 
 
     useEffect(() => {
@@ -82,16 +83,24 @@ const AuthProvider = ({ children }) => {
                 const userRef = doc(db, "users", user.uid);
                 const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
                     let finalUser = { ...user };
+                    // ★★★ 수정: isFirestoreDataLoaded 플래그 추가
+
+  			if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
+                 	   finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
+              	  }
                     if (userSnap.exists()) {
                         const userData = userSnap.data();
-                        finalUser = { ...user, ...userData, photoURL: userData.photoURL || user.photoURL };
+                        finalUser = { ...user, ...userData, photoURL: userData.photoURL || user.photoURL, isFirestoreDataLoaded: true };
+                    } else {
+                        // Firestore 문서가 없어도 로드 시도는 끝났음을 표시
+                        finalUser.isFirestoreDataLoaded = true;
                     }
                     finalUser.isAdmin = user.uid === ADMIN_UID;
                     setCurrentUser(finalUser);
                     setLoading(false);
                 }, (error) => {
                     console.error("User doc snapshot error:", error);
-                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID };
+                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
                     setCurrentUser(finalUser);
                     setLoading(false);
                 });
@@ -104,14 +113,7 @@ const AuthProvider = ({ children }) => {
         return () => unsubscribe();
     }, []);
 
-    // ★★★ 수정: value 객체에 관리자 상태와 함수 추가
-    const value = { 
-        currentUser, 
-        loading,
-        adminSelectedCity,
-        setAdminSelectedCity
-    };
-
+    const value = { currentUser, loading, adminSelectedCity, setAdminSelectedCity };
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
@@ -2312,6 +2314,8 @@ const BottomNav = () => {
     );
 };
 
+// App.js에서 ProtectedRoute를 이 코드로 교체하세요.
+
 const ProtectedRoute = ({ children }) => {
     const { currentUser, loading } = useAuth();
 
@@ -2327,7 +2331,16 @@ const ProtectedRoute = ({ children }) => {
         return <Navigate to="/start" replace />;
     }
     
-    // 관리자가 아닌데 지역 정보가 없다면 설정 페이지로 이동
+    // ★★★ 수정: Firestore 데이터 로드 완료 여부까지 확인
+    if (!currentUser.isFirestoreDataLoaded) {
+        return (
+            <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
+                <LoadingSpinner />
+            </div>
+        );
+    }
+    
+    // 관리자가 아니고 지역 정보가 없다면 설정 페이지로 이동
     if (!currentUser.isAdmin && !currentUser.city) {
         return <Navigate to="/region-setup" replace />;
     }
