@@ -137,7 +137,7 @@ const PwaInstallModal = ({ isOpen, onClose }) => {
 
     const iosInstructions = (
         <div className="text-center">
-            <p className="text-lg font-semibold mb-4">iOS에서는 아래의</p>
+            <p className="text-lg font-semibold mb-4">iOS에서는</p>
             <p className="mb-4">공유 버튼 <ShareIosIcon /> 을 누른 후</p>
             <p className="mb-6">'홈 화면에 추가' <PlusSquareIcon /> 를 선택해주세요.</p>
         </div>

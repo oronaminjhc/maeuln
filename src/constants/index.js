@@ -1,6 +1,6 @@
 // src/constants/index.js
 
-export const ADMIN_UID = 'wvXNcSqXMsaiqOCgBvU7A4pJoFv1';
+export const ADMIN_UID = 'mPEyGZqS1ZQmw381AYKi1Kd6epH2'; 
 
 export const categoryStyles = {
     '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
