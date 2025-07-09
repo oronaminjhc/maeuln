@@ -1,5 +1,6 @@
+// src/App.js
 
-import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
+import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { initializeApp } from 'firebase/app';
@@ -8,97 +9,18 @@ import { getFirestore, collection, addDoc, query, onSnapshot, doc, setDoc, getDo
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp, UserCircle, Lock, Edit2 } from 'lucide-react';
 
+// 외부 파일에서 함수 및 변수 import
 import { fetchRegions, fetchCities } from './services/region.service';
+import { timeSince } from './utils/timeSince';
+import { ADMIN_UID, categoryStyles, getCategoryStyle } from './constants';
 
-const ADMIN_UID = 'mPEyGZqS1ZQmw381AYKi1Kd6epH2';
-
+// Firebase 초기화 (App.js 내에서 한 번만 수행)
 const firebaseConfig = {
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
     authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
     projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
     storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.REACT_APP_FIREBASE_APP_ID,
-    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-// =================================================================
-// ▼▼▼ 인증 Context ▼▼▼
-// =================================================================
-const AuthContext = createContext();
-
-const AuthProvider = ({ children }) => {
-    const [currentUser, setCurrentUser] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [adminSelectedCity, setAdminSelectedCity] = useState(null); 
-
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                const userRef = doc(db, "users", user.uid);
-                const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
-                    let finalUser = { ...user };
-
-                    if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
-                        finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
-                    }
-
-                    if (userSnap.exists()) {
-                        const userData = userSnap.data();
-                        let firestorePhotoURL = userData.photoURL || finalUser.photoURL;
-                        if (firestorePhotoURL && firestorePhotoURL.startsWith('http://')) {
-                            firestorePhotoURL = firestorePhotoURL.replace('http://', 'https://');
-                        }
-                        finalUser = { ...user, ...userData, photoURL: firestorePhotoURL, isFirestoreDataLoaded: true };
-                    } else {
-                        finalUser.isFirestoreDataLoaded = true;
-                    }
-
-                    finalUser.isAdmin = user.uid === ADMIN_UID;
-                    setCurrentUser(finalUser);
-                    setLoading(false);
-                }, (error) => {
-                    console.error("User doc snapshot error:", error);
-                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
-                    setCurrentUser(finalUser);
-                    setLoading(false);
-                });
-                return () => userUnsubscribe();
-            } else {
-                setCurrentUser(null);
-                setLoading(false);
-            }
-        });
-        return () => unsubscribe();
-    }, []);
-
-    const value = { currentUser, loading, adminSelectedCity, setAdminSelectedCity };
-    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-const useAuth = () => {
-    return useContext(AuthContext);
-};
-
-
-// =================================================================
-// ▼▼▼ 로고, 헬퍼, 공용 컴포넌트 ▼▼▼
-// =================================================================
-const Logo = ({ size = 28 }) => (
-    <img src="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" alt="Logo" width={size} height={size} style={{ objectFit: 'contain' }}/>
-);
-
-const categoryStyles = {
-    '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' },
-    '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' },
-    '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' },
-    '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' },
-    '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' },
-    '마을_APP_FIREBASE_MESSAGING_SENDER_ID,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.REACT_APP_FIREBASE_APP_ID,
     measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
@@ -163,39 +85,13 @@ const useAuth = () => {
     return useContext(AuthContext);
 };
 
-// =================================================================
-// ▼▼▼ 공용 컴포넌트 ▼▼▼
-// =================================================================
-const Logo = ({ size = 28 }) => ( <img src="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" alt="Logo" width={size} height={size} style={{ objectFit: 'contain' }}/> );
-const categoryStyles = { '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' }, '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' }, '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' }, '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' }, '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' }, '마을맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' }, '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' }, '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' } };
-const getCategoryStyle = (category, city = '') => { const dynamicCategoryName = `${city}맘`; if (category === dynamicCategoryName) { return categoryStyles['마을맘']; } return categoryStyles[category] || categoryStyles['기타']; };
-const timeSince = (date) => { if (!date || typeof date.toDate !== 'function') return ''; const jsDate = date.toDate(); const seconds = Math.floor((new Date() - jsDate) / 1000); if (seconds < 60) return `방금 전`; const minutes = Math.floor(seconds / 60); if (minutes < 60) return `${minutes}분 전`; const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours}시간 전`; const days = Math.floor(hours / 24); if (days < 7) return `${days}일 전`; return jsDate.toLocaleDateString('ko-KR'); };
-const Modal = ({ isOpen, onClose, children }) => { if (!isOpen) return null; return ( <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4"> <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"> <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10"> <div className="w-6"></div> <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button> </div> <div className="p-6">{children}</div> </div> </div> );맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
-    '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
-    '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
-};
 
-const getCategoryStyle = (category, city = '') => {
-    const dynamicCategoryName = `${city}맘`;
-    if (category === dynamicCategoryName) {
-        return categoryStyles['마을맘'];
-    }
-    return categoryStyles[category] || categoryStyles['기타'];
-};
-
-const timeSince = (date) => {
-    if (!date || typeof date.toDate !== 'function') return '';
-    const jsDate = date.toDate();
-    const seconds = Math.floor((new Date() - jsDate) / 1000);
-    if (seconds < 60) return `방금 전`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}분 전`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}시간 전`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}일 전`;
-    return jsDate.toLocaleDateString('ko-KR');
-};
+// =================================================================
+// ▼▼▼ 로고, 헬퍼, 공용 컴포넌트 ▼▼▼
+// =================================================================
+const Logo = ({ size = 28 }) => (
+    <img src="/logo192.png" alt="Logo" width={size} height={size} style={{ objectFit: 'contain' }}/>
+);
 
 const Modal = ({ isOpen, onClose, children }) => {
     if (!isOpen) return null;
@@ -204,6 +100,7 @@ const Modal = ({ isOpen, onClose, children }) => {
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10">
                     <div className="w-6"></div>
+                    <h2 className="text-lg font-bold"> </h2> {/* 모달 제목 필요시 여기에 */}
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
                 </div>
                 <div className="p-6">{children}</div>
@@ -261,8 +158,8 @@ const PwaInstallModal = ({ isOpen, onClose }) => {
                     <X size={24} />
                 </button>
                 {isIOS ? iosInstructions : androidInstructions}
-                <button 
-                    onClick={onClose} 
+                <button
+                    onClick={onClose}
                     className="w-full mt-4 text-center text-blue-600 font-semibold py-2"
                 >
                     닫기
@@ -272,12 +169,71 @@ const PwaInstallModal = ({ isOpen, onClose }) => {
     );
 };
 
+const NewsCard = ({ news, isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked }) => {
+    return (
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+            {news.imageUrl && <img src={news.imageUrl} alt={news.title} className="w-full h-32 object-cover" />}
+            <div className="p-4">
+                <h3 className="font-bold text-lg truncate mb-1">{news.title}</h3>
+                <p className="text-gray-600 text-sm h-10 overflow-hidden text-ellipsis mb-3">{news.content}</p>
+                <div className="flex justify-between items-center text-xs text-gray-500">
+                    <button onClick={() => openDetailModal(news)} className="font-semibold text-blue-600 hover:underline">자세히 보기</button>
+                    <div className="flex items-center gap-2">
+                        {isAdmin && <button onClick={() => handleDeleteNews(news.id, news.imagePath)} className="text-red-500"><Trash2 size={16} /></button>}
+                        <button onClick={() => handleLikeNews(news)} className={`flex items-center gap-1 ${isLiked ? 'text-red-500' : 'text-gray-400'}`}>
+                            <Heart size={16} className={isLiked ? 'fill-current' : ''}/>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const Calendar = ({ events, onDateClick }) => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const today = new Date();
+    
+    const startDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+    const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+
+    const changeMonth = (offset) => {
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
+    };
+
+    return (
+        <div className="bg-white p-4 rounded-lg shadow">
+            <div className="flex justify-between items-center mb-4">
+                <button onClick={() => changeMonth(-1)}><ChevronLeft/></button>
+                <h3 className="font-bold text-lg">{`${currentDate.getFullYear()}년 ${currentDate.getMonth() + 1}월`}</h3>
+                <button onClick={() => changeMonth(1)}><ChevronRight/></button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-sm">
+                {['일', '월', '화', '수', '목', '금', '토'].map(day => <div key={day} className="font-semibold text-gray-600">{day}</div>)}
+                {Array.from({ length: startDay }).map((_, i) => <div key={`empty-${i}`}></div>)}
+                {Array.from({ length: daysInMonth }).map((_, day) => {
+                    const date = day + 1;
+                    const fullDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+                    const isToday = today.getFullYear() === currentDate.getFullYear() && today.getMonth() === currentDate.getMonth() && today.getDate() === date;
+                    const hasEvent = events[fullDateStr] && events[fullDateStr].length > 0;
+                    return (
+                        <div key={date} onClick={() => onDateClick(fullDateStr)} className="py-2 cursor-pointer relative">
+                            <span className={`mx-auto flex items-center justify-center rounded-full w-8 h-8 ${isToday ? 'bg-red-500 text-white' : ''} ${hasEvent ? 'font-bold' : ''}`}>
+                                {date}
+                            </span>
+                            {hasEvent && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-blue-500 rounded-full"></div>}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+
 // =================================================================
 // ▼▼▼ 페이지 컴포넌트들 ▼▼▼
 // =================================================================
-
-const StartPage = () => {
-// App.js 파일에서 기존 StartPage 컴포넌트를 이 코드로 완전히 교체하세요.
 
 const StartPage = () => {
     const [loading, setLoading] = useState(false);
@@ -310,9 +266,9 @@ const StartPage = () => {
                 <meta property="og:title" content="마을N - 우리 동네 SNS" />
                 <meta property="og:description" content="주민들이 함께 만들고 소통하는 지역기반 커뮤니티, 마을N에서 우리 동네의 새로운 소식을 확인하세요!" />
                 <meta property="og:url" content="https://www.maeuln.net/" />
-                <meta property="og:image" content="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" />
+                <meta property="og:image" content="https://www.maeuln.net/logo512.png" />
             </Helmet>
-            
+
             <PwaInstallModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
 
             <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4">
@@ -328,8 +284,8 @@ const StartPage = () => {
                         {loading ? "로그인 중..." : "카카오로 3초만에 시작하기"}
                     </button>
                     <div className="mt-6 text-center">
-                        <button 
-                            onClick={() => setIsModalOpen(true)} 
+                        <button
+                            onClick={() => setIsModalOpen(true)}
                             className="text-sm text-gray-600 hover:text-gray-900 font-semibold underline"
                         >
                             마을N 앱 다운받기
@@ -369,11 +325,11 @@ const RegionSetupPage = () => {
                 setSelectedCity('');
                 const cityData = await fetchCities(selectedRegion);
                 setCities(cityData);
-                
+
                 if (cityData.length === 1) {
                     setSelectedCity(cityData[0]);
                 }
-                
+
                 setApiLoading(false);
             };
             loadCities();
@@ -397,13 +353,13 @@ const RegionSetupPage = () => {
                 photoURL: currentUser.photoURL,
                 region: selectedRegion,
                 city: selectedCity,
-                town: '', 
+                town: '',
                 createdAt: Timestamp.now(),
                 followerCount: 0,
                 followers: [],
                 following: [],
                 likedNews: []
-            }, { merge: true }); 
+            }, { merge: true });
         } catch (e) {
             console.error("Region save error:", e);
             setError("저장에 실패했습니다. 다시 시도해주세요.");
@@ -411,7 +367,7 @@ const RegionSetupPage = () => {
         }
     };
 
-    const isCityDropdownDisabled = !selectedRegion || apiLoading || cities.length === 1;
+    const isCityDropdownDisabled = !selectedRegion || apiLoading || cities.length <= 1;
 
     return (
         <div className="flex flex-col items-center justify-center h-screen bg-white p-4">
@@ -425,9 +381,9 @@ const RegionSetupPage = () => {
                         <option value="">시/도 선택</option>
                         {regions.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                    <select 
-                        value={selectedCity} 
-                        onChange={(e) => setSelectedCity(e.target.value)} 
+                    <select
+                        value={selectedCity}
+                        onChange={(e) => setSelectedCity(e.target.value)}
                         disabled={isCityDropdownDisabled}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200"
                     >
@@ -444,11 +400,6 @@ const RegionSetupPage = () => {
     );
 };
 
-
-// App.js 파일에서 기존 HomePage 컴포넌트를 찾아서 아래 코드로 완전히 교체하세요.
-
-// App.js 파일에서 기존 HomePage 컴포넌트를 이 코드로 완전히 교체하세요.
-
 const HomePage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
@@ -458,7 +409,6 @@ const HomePage = () => {
     const [userEvents, setUserEvents] = useState({});
     const [likedNews, setLikedNews] = useState([]);
 
-    const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
     const displayCity = adminSelectedCity || (currentUser.isAdmin ? '전국' : currentUser.city);
 
     const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -467,40 +417,24 @@ const HomePage = () => {
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
     useEffect(() => {
-        if (!currentUser) return;
-        if (!currentUser.isAdmin && !currentUser.city) return;
+        if (!currentUser || (!currentUser.isAdmin && !currentUser.city)) return;
 
         const currentTargetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
-        
-        // 관리자가 아닌데 볼 지역이 없으면 로딩 상태로 둠
+
         if (!currentUser.isAdmin && !currentTargetCity) {
-            setPosts([]);
-            setBuanNews([]);
-            return;
+            setPosts([]); setBuanNews([]); return;
         }
 
         const unsubscribes = [];
         setLikedNews(currentUser.likedNews || []);
 
-        let postsQuery;
-        if (currentTargetCity) {
-            postsQuery = query(collection(db, "posts"), where("city", "==", currentTargetCity), orderBy("createdAt", "desc"), limit(50));
-        } else {
-            postsQuery = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
-        }
-        unsubscribes.push(onSnapshot(postsQuery, (snapshot) => {
-            setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        }, () => setPosts([])));
+        const basePostsQuery = currentTargetCity ? [where("city", "==", currentTargetCity)] : [];
+        const postsQuery = query(collection(db, "posts"), ...basePostsQuery, orderBy("createdAt", "desc"), limit(50));
+        unsubscribes.push(onSnapshot(postsQuery, (snapshot) => setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setPosts([])));
 
-        let newsQuery;
-        if (currentTargetCity) {
-            newsQuery = query(collection(db, "news"), where("city", "==", currentTargetCity), orderBy("createdAt", "desc"));
-        } else {
-            newsQuery = query(collection(db, "news"), orderBy("createdAt", "desc"));
-        }
-        unsubscribes.push(onSnapshot(newsQuery, (snapshot) => {
-            setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        }, () => setBuanNews([])));
+        const baseNewsQuery = currentTargetCity ? [where("city", "==", currentTargetCity)] : [];
+        const newsQuery = query(collection(db, "news"), ...baseNewsQuery, orderBy("createdAt", "desc"));
+        unsubscribes.push(onSnapshot(newsQuery, (snapshot) => setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setBuanNews([])));
 
         unsubscribes.push(onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
             const eventsData = {};
@@ -544,9 +478,7 @@ const HomePage = () => {
         }
     };
 
-    if (posts === null || buanNews === null) {
-        return <LoadingSpinner />;
-    }
+    if (posts === null || buanNews === null) return <LoadingSpinner />;
 
     const popularPosts = posts ? [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3) : [];
 
@@ -653,34 +585,29 @@ const NewsPage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
     const [buanNews, setBuanNews] = useState(null);
-    const [likedNews, setLikedNews] = useState(currentUser.likedNews || []);
-    
+    const [likedNews, setLikedNews] = useState(currentUser?.likedNews || []);
+
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
     const [activeTag, setActiveTag] = useState('전체');
     const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
 
     useEffect(() => {
+        if (!currentUser) return;
         const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
 
-        if (!currentUser || (!targetCity && !currentUser.isAdmin)) {
-            // 데이터를 가져올 조건이 안되면 빈 배열로 설정하여 로딩을 멈춤
-            setBuanNews([]);
-            return;
+        if (!currentUser.isAdmin && !targetCity) {
+            setBuanNews([]); return;
         }
-        
-        let q;
-        if (targetCity) {
-            q = query(collection(db, "news"), where("city", "==", targetCity), orderBy("createdAt", "desc"));
-        } else {
-            q = query(collection(db, "news"), orderBy("createdAt", "desc"));
-        }
-        
+
+        const baseQuery = targetCity ? [where("city", "==", targetCity)] : [];
+        const q = query(collection(db, "news"), ...baseQuery, orderBy("createdAt", "desc"));
+
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }, (error) => {
             console.error("Error fetching news:", error);
-            setBuanNews([]); // 에러 발생 시에도 로딩을 멈추기 위해 빈 배열로 설정
+            setBuanNews([]);
         });
 
         return () => unsubscribe();
@@ -689,7 +616,7 @@ const NewsPage = () => {
     const handleLikeNews = async (newsItem) => {
         const userRef = doc(db, 'users', currentUser.uid);
         const isLiked = likedNews.includes(newsItem.id);
-        const newLikedNews = isLiked 
+        const newLikedNews = isLiked
             ? likedNews.filter(id => id !== newsItem.id)
             : [...likedNews, newsItem.id];
         setLikedNews(newLikedNews);
@@ -715,10 +642,8 @@ const NewsPage = () => {
 
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
-    if (buanNews === null) {
-        return <LoadingSpinner />;
-    }
-    
+    if (buanNews === null) return <LoadingSpinner />;
+
     const filteredNews = activeTag === '전체'
         ? buanNews
         : buanNews.filter(news => news.tags && news.tags.includes(activeTag));
@@ -765,9 +690,7 @@ const NewsPage = () => {
         </div>
     );
 };
-// NewsPage 컴포넌트가 끝나는 지점...
 
-// ▼▼▼ 여기에 아래 코드를 붙여넣으세요 ▼▼▼
 const NewsWritePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -883,8 +806,6 @@ const NewsWritePage = () => {
     );
 };
 
-
-// ▼▼▼ 여기에 아래 코드를 붙여넣으세요 ▼▼▼
 const CalendarPage = () => {
     const { currentUser } = useAuth();
     const location = useLocation();
@@ -894,17 +815,18 @@ const CalendarPage = () => {
     const [eventTitle, setEventTitle] = useState('');
 
     useEffect(() => {
-      const unsub = onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
-          const eventsData = {};
-          snapshot.docs.forEach(doc => {
-              const event = { id: doc.id, ...doc.data() };
-              if (!eventsData[event.date]) eventsData[event.date] = [];
-              eventsData[event.date].push(event);
-          });
-          setUserEvents(eventsData);
-      });
-      return () => unsub();
-    }, [currentUser.uid]);
+        if (!currentUser) return;
+        const unsub = onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
+            const eventsData = {};
+            snapshot.docs.forEach(doc => {
+                const event = { id: doc.id, ...doc.data() };
+                if (!eventsData[event.date]) eventsData[event.date] = [];
+                eventsData[event.date].push(event);
+            });
+            setUserEvents(eventsData);
+        });
+        return () => unsub();
+    }, [currentUser]);
 
     useEffect(() => {
         if(location.state?.date) {
@@ -937,7 +859,7 @@ const CalendarPage = () => {
             alert("일정 추가 중 오류가 발생했습니다.");
         }
     };
-    
+
     const eventsForSelectedDate = selectedDate && userEvents[selectedDate] ? userEvents[selectedDate] : [];
 
     return (
@@ -974,46 +896,32 @@ const CalendarPage = () => {
     );
 };
 
-// 예시: BoardPage
-
-// App.js 파일에서 기존 BoardPage 컴포넌트를 이 코드로 완전히 교체하세요.
-
 const BoardPage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
     const [posts, setPosts] = useState(null);
     const [filter, setFilter] = useState('전체');
 
-    const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
     const userCity = currentUser?.city;
-    const dynamicMomCategory = `${userCity}맘`;
+    const dynamicMomCategory = userCity ? `${userCity}맘` : '마을맘';
     const categories = ['전체', '일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타'];
 
     useEffect(() => {
-        if (!currentUser || (!targetCity && !currentUser.isAdmin)) {
-            setPosts([]);
-            return;
+        if (!currentUser) return;
+        const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
+        if (!currentUser.isAdmin && !targetCity) {
+            setPosts([]); return;
         };
-        
+
         const postsCollection = collection(db, "posts");
         let queryConstraints = [];
 
-        // 지역 필터링
-        if (targetCity) {
-            queryConstraints.push(where("city", "==", targetCity));
-        }
-
-        // 카테고리 필터링
-        if (filter !== '전체') {
-            queryConstraints.push(where("category", "==", filter));
-        }
-
-        // 정렬 및 제한
+        if (targetCity) queryConstraints.push(where("city", "==", targetCity));
+        if (filter !== '전체') queryConstraints.push(where("category", "==", filter));
         queryConstraints.push(orderBy("createdAt", "desc"));
         queryConstraints.push(limit(50));
-        
-        const q = query(postsCollection, ...queryConstraints);
 
+        const q = query(postsCollection, ...queryConstraints);
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }, (error) => {
@@ -1024,9 +932,7 @@ const BoardPage = () => {
         return () => unsubscribe();
     }, [filter, currentUser, adminSelectedCity]);
 
-    if (posts === null) {
-        return <LoadingSpinner />;
-    }
+    if (posts === null) return <LoadingSpinner />;
 
     return (
         <div className="p-4 pb-20">
@@ -1082,13 +988,11 @@ const BoardPage = () => {
     );
 };
 
-// App.js 파일에서 기존 WritePage 컴포넌트를 이 코드로 완전히 교체하세요.
-
 const WritePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const itemToEdit = location.state?.itemToEdit;
-    
+
     const { currentUser } = useAuth();
     const [title, setTitle] = useState(itemToEdit?.title || '');
     const [content, setContent] = useState(itemToEdit?.content || '');
@@ -1096,37 +1000,30 @@ const WritePage = () => {
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // 관리자용 지역 선택 상태
     const [allRegions, setAllRegions] = useState([]);
     const [selectedPostRegion, setSelectedPostRegion] = useState(itemToEdit ? `${itemToEdit.region}|${itemToEdit.city}` : '');
 
     const userCity = currentUser?.city;
-    const dynamicMomCategory = `${userCity}맘`;
+    const dynamicMomCategory = userCity ? `${userCity}맘` : '마을맘';
     const categories = ['일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타'];
     const [category, setCategory] = useState(itemToEdit?.category || '일상');
 
-    // 관리자일 경우 지역 목록 불러오기
     useEffect(() => {
         if (currentUser?.isAdmin) {
             const loadAllRegions = async () => {
                 const sidos = await fetchRegions();
                 const allCitiesPromises = sidos.map(sido => fetchCities(sido));
                 const allCitiesArrays = await Promise.all(allCitiesPromises);
-                
-                const flattenedRegions = [];
-                sidos.forEach((sido, index) => {
-                    allCitiesArrays[index].forEach(city => {
-                        if (sido === city) {
-                             if (!flattenedRegions.find(r => r.city === sido)) {
-                                flattenedRegions.push({ region: sido, city: city, label: sido });
-                            }
-                        } else {
-                            flattenedRegions.push({ region: sido, city: city, label: `${sido} ${city}` });
-                        }
-                    });
-                });
+
+                const flattenedRegions = sidos.flatMap((sido, index) =>
+                    allCitiesArrays[index].map(city => ({
+                        region: sido,
+                        city: city,
+                        label: sido === city ? sido : `${sido} ${city}`
+                    }))
+                ).filter((v,i,a)=>a.findIndex(t=>(t.label === v.label))===i); // 중복 제거
+
                 setAllRegions(flattenedRegions);
-                // 수정 모드일 경우, 기본값을 설정
                 if (itemToEdit) {
                     setSelectedPostRegion(`${itemToEdit.region}|${itemToEdit.city}`);
                 }
@@ -1156,12 +1053,10 @@ const WritePage = () => {
 
     const handleSubmit = async () => {
         if (!title.trim() || !content.trim()) {
-            alert('제목과 내용을 모두 입력해주세요.');
-            return;
+            alert('제목과 내용을 모두 입력해주세요.'); return;
         }
         if (currentUser.isAdmin && !selectedPostRegion) {
-            alert('게시글을 등록할 지역을 선택해주세요.');
-            return;
+            alert('게시글을 등록할 지역을 선택해주세요.'); return;
         }
         if (isSubmitting) return;
         setIsSubmitting(true);
@@ -1181,22 +1076,15 @@ const WritePage = () => {
                 imagePath = newImagePath;
             }
 
-            const [region, city] = currentUser.isAdmin 
-                ? selectedPostRegion.split('|') 
+            const [region, city] = currentUser.isAdmin
+                ? selectedPostRegion.split('|')
                 : [currentUser.region, currentUser.city];
 
             const postData = {
-                title,
-                content,
-                category,
-                imageUrl,
-                imagePath,
-                updatedAt: Timestamp.now(),
-                region,
-                city,
+                title, content, category, imageUrl, imagePath,
+                updatedAt: Timestamp.now(), region, city,
             };
-            
-            // 수정일 경우, 생성 관련 필드는 건드리지 않음
+
             if (!itemToEdit) {
                 postData.authorId = currentUser.uid;
                 postData.authorName = currentUser.displayName;
@@ -1278,31 +1166,23 @@ const PostDetailPage = () => {
     const [newComment, setNewComment] = useState('');
 
     useEffect(() => {
-        if (!postId) {
-            navigate('/board');
-            return;
-        }
+        if (!postId) { navigate('/board'); return; }
         const postRef = doc(db, `posts`, postId);
         const unsubscribePost = onSnapshot(postRef, (doc) => {
             if (doc.exists()) {
                 setPost({ id: doc.id, ...doc.data() });
             } else {
-                alert("삭제된 게시글입니다.");
-                navigate('/board');
+                alert("삭제된 게시글입니다."); navigate('/board');
             }
         });
 
         const commentsRef = collection(db, `posts/${postId}/comments`);
         const q = query(commentsRef, orderBy("createdAt", "asc"));
         const unsubscribeComments = onSnapshot(q, (snapshot) => {
-            const commentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setComments(commentsData);
+            setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
 
-        return () => {
-            unsubscribePost();
-            unsubscribeComments();
-        };
+        return () => { unsubscribePost(); unsubscribeComments(); };
     }, [postId, navigate]);
 
     const handleLike = async () => {
@@ -1337,6 +1217,7 @@ const PostDetailPage = () => {
                 text: newComment.trim(),
                 authorId: currentUser.uid,
                 authorName: currentUser.displayName,
+                authorPhotoURL: currentUser.photoURL,
                 createdAt: Timestamp.now(),
                 likes: []
             });
@@ -1349,41 +1230,34 @@ const PostDetailPage = () => {
     const handleCommentLike = async (commentId) => {
         if (!currentUser) return;
         const commentRef = doc(db, `posts/${postId}/comments`, commentId);
-        try {
-            const commentSnap = await getDoc(commentRef);
-            if (!commentSnap.exists()) return;
-            const currentLikes = commentSnap.data().likes || [];
-            await updateDoc(commentRef, {
-                likes: currentLikes.includes(currentUser.uid) ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
-            });
-        } catch(e) { console.error("Error liking comment:", e); }
+        const commentSnap = await getDoc(commentRef);
+        if (!commentSnap.exists()) return;
+        const currentLikes = commentSnap.data().likes || [];
+        await updateDoc(commentRef, {
+            likes: currentLikes.includes(currentUser.uid) ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
+        });
     };
 
     const handleDelete = async (postId, imagePath) => {
-        if (!post || post.authorId !== currentUser.uid) return;
+        if (!post || (post.authorId !== currentUser.uid && !currentUser.isAdmin)) return;
         if (window.confirm("정말로 이 게시글을 삭제하시겠습니까?")) {
             try {
-                const commentsRef = collection(db, 'posts', postId, 'comments');
-                const commentsSnap = await getDocs(commentsRef);
-                const deletePromises = commentsSnap.docs.map(doc => deleteDoc(doc.ref));
-                await Promise.all(deletePromises);
-                
-                if (imagePath) { await deleteObject(ref(storage, imagePath)); }
                 await deleteDoc(doc(db, 'posts', postId));
+                if (imagePath) { await deleteObject(ref(storage, imagePath)); }
                 alert("게시글이 삭제되었습니다.");
                 navigate('/board');
             } catch (error) {
-                console.error("Error deleting post:", error)
+                console.error("Error deleting post:", error);
                 alert("삭제 중 오류가 발생했습니다.");
             }
         }
     };
 
     if (post === null) return <LoadingSpinner />;
-    
-    const isAuthor = post.authorId === currentUser.uid;
-    const isLiked = post.likes?.includes(currentUser.uid);
-    const isBookmarked = post.bookmarks?.includes(currentUser.uid);
+
+    const isAuthor = post.authorId === currentUser?.uid;
+    const isLiked = post.likes?.includes(currentUser?.uid);
+    const isBookmarked = post.bookmarks?.includes(currentUser?.uid);
     const style = getCategoryStyle(post.category, post.city);
 
     return (
@@ -1394,9 +1268,9 @@ const PostDetailPage = () => {
                     <div className="flex justify-between items-start mt-2">
                         <h1 className="text-2xl font-bold flex-1 pr-4">{post.title}</h1>
                         <div className="flex items-center gap-2">
-                            {isAuthor && (
+                            {(isAuthor || currentUser.isAdmin) && (
                                 <>
-                                    <button onClick={() => navigate(`/post/edit/${post.id}`, { state: { itemToEdit: post }})} className="p-1 text-gray-500 hover:text-blue-600"><Pencil size={20} /></button>
+                                    {isAuthor && <button onClick={() => navigate(`/post/edit/${post.id}`, { state: { itemToEdit: post }})} className="p-1 text-gray-500 hover:text-blue-600"><Pencil size={20} /></button>}
                                     <button onClick={() => handleDelete(post.id, post.imagePath)} className="p-1 text-gray-500 hover:text-red-600"><Trash2 size={20} /></button>
                                 </>
                             )}
@@ -1405,11 +1279,11 @@ const PostDetailPage = () => {
                             </button>
                         </div>
                     </div>
-                    <div className="flex items-center text-sm text-gray-500 mt-4">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 mr-2 overflow-hidden flex items-center justify-center" onClick={() => navigate(`/profile/${post.authorId}`)}>
+                    <div className="flex items-center text-sm text-gray-500 mt-4 cursor-pointer" onClick={() => navigate(`/profile/${post.authorId}`)}>
+                        <div className="w-8 h-8 rounded-full bg-gray-200 mr-2 overflow-hidden flex items-center justify-center">
                             {post.authorPhotoURL ? <img src={post.authorPhotoURL} alt={post.authorName} className="w-full h-full object-cover" /> : <UserCircle size={32} className="text-gray-400" />}
                         </div>
-                        <span onClick={() => navigate(`/profile/${post.authorId}`)} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
+                        <span className="font-semibold hover:underline">{post.authorName}</span>
                         <span className="mx-2">·</span>
                         <span>{timeSince(post.createdAt)}</span>
                     </div>
@@ -1428,7 +1302,9 @@ const PostDetailPage = () => {
                 <div className="space-y-4">
                     {comments.map(comment => (
                         <div key={comment.id} className="flex gap-3">
-                             <div className="w-8 h-8 rounded-full bg-gray-200 mt-1 flex-shrink-0 cursor-pointer" onClick={() => navigate(`/profile/${comment.authorId}`)}></div>
+                             <div className="w-8 h-8 rounded-full bg-gray-200 mt-1 flex-shrink-0 cursor-pointer" onClick={() => navigate(`/profile/${comment.authorId}`)}>
+                                 {comment.authorPhotoURL ? <img src={comment.authorPhotoURL} alt={comment.authorName} className="w-full h-full object-cover rounded-full" /> : <UserCircle size={32} className="text-gray-400"/>}
+                             </div>
                              <div className="flex-1">
                                 <div className="bg-gray-100 p-3 rounded-lg">
                                     <p onClick={() => navigate(`/profile/${comment.authorId}`)} className="font-semibold text-sm cursor-pointer hover:underline">{comment.authorName}</p>
@@ -1437,7 +1313,7 @@ const PostDetailPage = () => {
                                 <div className="flex items-center mt-1 text-xs text-gray-500">
                                     <span>{timeSince(comment.createdAt)}</span>
                                     <button onClick={() => handleCommentLike(comment.id)} className="ml-4 flex items-center hover:text-red-500">
-                                      <Heart size={12} className={comment.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : ''} />
+                                      <Heart size={12} className={comment.likes?.includes(currentUser?.uid) ? 'text-red-500 fill-current' : ''} />
                                       <span className="ml-1">{comment.likes?.length || 0}</span>
                                     </button>
                                 </div>
@@ -1509,7 +1385,7 @@ const ProfileEditPage = () => {
 
             const dataToUpdate = { bio, town, photoURL };
             await updateDoc(userDocRef, dataToUpdate);
-            
+
             if (photoURL !== currentUser.photoURL) {
                 await updateProfile(auth.currentUser, { photoURL });
             }
@@ -1548,7 +1424,7 @@ const ProfileEditPage = () => {
                     </label>
                     <input id="profile-image-upload" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </div>
-                
+
                 <div className="w-full space-y-4 mt-4">
                     <div>
                         <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">자기소개</label>
@@ -1563,13 +1439,6 @@ const ProfileEditPage = () => {
         </div>
     );
 };
-
-
-// App.js 파일에서 기존 UserProfilePage 컴포넌트를 찾아서 아래 코드로 완전히 교체하세요.
-
-// App.js 파일에서 기존 UserProfilePage 컴포넌트를 이 코드로 완전히 교체하세요.
-
-// App.js 파일에서 기존 UserProfilePage 컴포넌트를 이 코드로 완전히 교체하세요.
 
 const UserProfilePage = () => {
     const { userId } = useParams();
@@ -1586,19 +1455,15 @@ const UserProfilePage = () => {
                 const sidos = await fetchRegions();
                 const allCitiesPromises = sidos.map(sido => fetchCities(sido));
                 const allCitiesArrays = await Promise.all(allCitiesPromises);
-                
-                const flattenedRegions = [];
-                sidos.forEach((sido, index) => {
-                    allCitiesArrays[index].forEach(city => {
-                        if (sido === city) {
-                             if (!flattenedRegions.find(r => r.city === sido)) {
-                                flattenedRegions.push({ region: sido, city: city, label: sido });
-                            }
-                        } else {
-                            flattenedRegions.push({ region: sido, city: city, label: `${sido} ${city}` });
-                        }
-                    });
-                });
+
+                const flattenedRegions = sidos.flatMap((sido, index) =>
+                    allCitiesArrays[index].map(city => ({
+                        region: sido,
+                        city: city,
+                        label: sido === city ? sido : `${sido} ${city}`
+                    }))
+                ).filter((v,i,a)=>a.findIndex(t=>(t.label === v.label))===i);
+
                 setAllRegions(flattenedRegions);
             };
             loadAllRegions();
@@ -1621,7 +1486,7 @@ const UserProfilePage = () => {
         const unsubscribePosts = onSnapshot(userPostsQuery, (snapshot) => {
             setUserPosts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
         });
-        
+
         return () => { unsubscribeUser(); unsubscribePosts(); };
     }, [userId]);
 
@@ -1635,10 +1500,10 @@ const UserProfilePage = () => {
 
     const handleRegionViewChange = (e) => {
         const value = e.target.value;
-        setAdminSelectedCity(value === "admin_view" ? null : value);
-        navigate('/home'); 
+        setAdminSelectedCity(value === "admin_view" ? null : value.split('|')[1]);
+        navigate('/home');
     };
-    
+
     const handleFollow = async () => {
         if (!currentUser || !profileUser) return;
         const currentUserRef = doc(db, 'users', currentUser.uid);
@@ -1659,7 +1524,7 @@ const UserProfilePage = () => {
             alert("팔로우 처리 중 오류가 발생했습니다.");
         }
     };
-    
+
     const handleLogout = async () => {
         if (window.confirm('로그아웃 하시겠습니까?')) {
             await signOut(auth);
@@ -1700,7 +1565,7 @@ const UserProfilePage = () => {
                     </div>
                 </div>
             </div>
-            
+
             <div className="flex gap-2 mb-6">
                 {isMyProfile ? (
                     <>
@@ -1713,18 +1578,18 @@ const UserProfilePage = () => {
                     </>
                 ) : (
                     <>
-                        <button 
-                            onClick={handleFollow} 
+                        <button
+                            onClick={handleFollow}
                             className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
-                                isFollowing 
-                                ? 'bg-gray-200 text-[#00462A]' 
+                                isFollowing
+                                ? 'bg-gray-200 text-[#00462A]'
                                 : 'bg-[#00462A] text-white'
                             }`}
                         >
                             {isFollowing ? '✓ 팔로잉' : '+ 팔로우'}
                         </button>
-                        <button 
-                            onClick={handleMessage} 
+                        <button
+                            onClick={handleMessage}
                             className="flex-1 px-4 py-2 text-sm font-semibold rounded-lg bg-white text-[#00462A] border border-[#00462A] flex items-center justify-center gap-1.5"
                         >
                              <MessageSquare size={16} /> 메시지
@@ -1742,19 +1607,19 @@ const UserProfilePage = () => {
                             <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isAdminModeOn ? 'translate-x-6' : 'translate-x-1'}`}/>
                         </button>
                     </div>
-                    
+
                     {isAdminModeOn && (
                         <div>
                             <label htmlFor="region-view-select" className="block text-sm font-medium text-gray-600 mb-1">지역 뷰 선택</label>
-                            <select 
+                            <select
                                 id="region-view-select"
-                                value={adminSelectedCity || 'admin_view'}
+                                value={adminSelectedCity ? `${allRegions.find(r=>r.city===adminSelectedCity)?.region}|${adminSelectedCity}` : 'admin_view'}
                                 onChange={handleRegionViewChange}
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
                             >
                                 <option value="admin_view">전체 보기 (관리자)</option>
                                 {allRegions.map(r => (
-                                    <option key={r.label} value={r.city}>{r.label}</option>
+                                    <option key={r.label} value={`${r.region}|${r.city}`}>{r.label}</option>
                                 ))}
                             </select>
                         </div>
@@ -1787,32 +1652,27 @@ const SearchPage = () => {
 
     const handleSearch = async () => {
         if (!searchTerm.trim()) {
-            setResults([]);
-            return;
+            setResults([]); return;
         }
         setLoading(true);
         try {
             const postsRef = collection(db, 'posts');
             let q;
-
             if (targetCity) {
-                // 관리자가 특정 지역을 보거나, 일반 사용자인 경우
                 q = query(postsRef,
                     where('city', '==', targetCity),
                     where('title', '>=', searchTerm),
                     where('title', '<=', searchTerm + '\uf8ff')
                 );
             } else {
-                // 관리자가 전체 뷰에서 검색하는 경우
                 q = query(postsRef,
                     where('title', '>=', searchTerm),
                     where('title', '<=', searchTerm + '\uf8ff')
                 );
             }
-            
+
             const querySnapshot = await getDocs(q);
-            const fetchedPosts = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setResults(fetchedPosts);
+            setResults(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         } catch (error) {
             console.error("Search error: ", error);
             alert("검색 중 오류가 발생했습니다.");
@@ -1824,8 +1684,8 @@ const SearchPage = () => {
     return (
         <div className="p-4">
             <div className="relative mb-4 flex gap-2">
-                <input type="text" value={searchTerm} 
-                    onChange={(e) => setSearchTerm(e.target.value)} 
+                <input type="text" value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                     placeholder={targetCity ? `${displayCity} 내에서 검색...` : '전체 게시물에서 검색...'}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
@@ -1834,13 +1694,14 @@ const SearchPage = () => {
             </div>
  	        {loading ? <LoadingSpinner /> : (
                 <div className="space-y-3">
-                    {results.length === 0 && searchTerm && !loading && ( <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p> )}
-                    {results.map(post => (
+                    {results.length > 0 ? results.map(post => (
                         <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
                             <h3 className="font-bold text-md truncate mb-1">{post.title}</h3>
                             <p className="text-gray-600 text-sm truncate">{post.content}</p>
                         </div>
-                    ))}
+                    )) : searchTerm && (
+                        <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p>
+                    )}
                 </div>
             )}
         </div>
@@ -1856,8 +1717,6 @@ const NotificationsPage = () => {
 };
 
 
-// App.js 파일에서 기존 ChatListPage 컴포넌트를 이 코드로 완전히 교체하세요.
-
 const ChatListPage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
@@ -1865,27 +1724,25 @@ const ChatListPage = () => {
 
     useEffect(() => {
         if (!currentUser) return;
-        
+
         const q = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
-        
+
         const unsubscribe = onSnapshot(q, async (snapshot) => {
             const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
                 const chatData = docSnap.data();
                 const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
                 if (!otherMemberId) return null;
                 const userDoc = await getDoc(doc(db, 'users', otherMemberId));
-                return { 
-                    id: docSnap.id, 
-                    ...chatData, 
-                    otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId }, 
+                return {
+                    id: docSnap.id,
+                    ...chatData,
+                    otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId },
                 };
             }));
             setChats(chatsData.filter(Boolean));
         }, (error) => {
-            // ★★★ 추가: onSnapshot에서 권한 오류 발생 시 처리
             console.error("Error listening to chat list:", error);
-            // 사용자에게 피드백을 주거나, 빈 목록으로 처리
-            setChats([]); 
+            setChats([]);
         });
 
         return () => unsubscribe();
@@ -1916,15 +1773,11 @@ const ChatListPage = () => {
     );
 };
 
-// App.js 파일에서 ChatListPage 컴포넌트가 끝나는 지점 다음에 이 코드를 붙여넣으세요.
-
-// App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
-
 const ChatPage = () => {
     const { currentUser } = useAuth();
     const { chatId } = useParams();
     const location = useLocation();
-    
+
     const recipientId = location.state?.recipientId;
 
     const [messages, setMessages] = useState([]);
@@ -1932,109 +1785,75 @@ const ChatPage = () => {
     const [isAllowed, setIsAllowed] = useState(false);
     const [loading, setLoading] = useState(true);
     const messagesEndRef = useRef(null);
-    
+
     useEffect(() => {
         if (!chatId || !currentUser) return;
 
-        let unsubscribe = () => {};
-        let messagesUnsubscribe = () => {};
-
-        const checkPermissionAndFetchMessages = async () => {
-            const chatRef = doc(db, 'chats', chatId);
-            
-            try {
-                unsubscribe = onSnapshot(chatRef, (chatSnap) => {
-                    if (chatSnap.exists()) {
-                        const data = chatSnap.data();
-                        if (data.members?.includes(currentUser.uid)) {
-                            setIsAllowed(true);
-                            const messagesRef = collection(chatRef, 'messages');
-                            const q = query(messagesRef, orderBy('createdAt', 'asc'));
-                            
-                            messagesUnsubscribe = onSnapshot(q, (snapshot) => {
-                                setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                            });
-                        } else {
-                            console.warn("접근 권한이 없습니다.");
-                            setIsAllowed(false);
-                        }
-                    } else {
-                        console.warn("채팅방이 존재하지 않지만, 첫 메시지 전송 시 생성됩니다.");
-                        setIsAllowed(true); 
-                    }
-                    setLoading(false);
-                }, (error) => {
-                    console.error("Error listening to chat document:", error);
-                    setIsAllowed(false);
-                    setLoading(false);
-                });
-            } catch (error) {
-                console.error("Error setting up chat listener:", error);
-                setLoading(false);
+        const chatRef = doc(db, 'chats', chatId);
+        const unsubscribe = onSnapshot(chatRef, (chatSnap) => {
+            if (chatSnap.exists()) {
+                const data = chatSnap.data();
+                if (data.members?.includes(currentUser.uid)) {
+                    setIsAllowed(true);
+                } else {
+                    console.warn("접근 권한이 없습니다."); setIsAllowed(false);
+                }
+            } else {
+                 setIsAllowed(true); // 새 채팅방
             }
-        };
+            setLoading(false);
+        }, (error) => {
+            console.error("Error listening to chat document:", error);
+            setIsAllowed(false); setLoading(false);
+        });
 
-        checkPermissionAndFetchMessages();
+        const messagesRef = collection(chatRef, 'messages');
+        const q = query(messagesRef, orderBy('createdAt', 'asc'));
+        const messagesUnsubscribe = onSnapshot(q, (snapshot) => {
+            setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
 
-        return () => {
-            if (typeof unsubscribe === 'function') unsubscribe();
-            if (typeof messagesUnsubscribe === 'function') messagesUnsubscribe();
-        };
+        return () => { unsubscribe(); messagesUnsubscribe(); };
     }, [chatId, currentUser]);
-    
+
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
-        
-        if (!newMessage.trim() || !recipientId) {
-            if (!recipientId) console.error("Recipient ID is missing.");
-            return;
-        }
+        if (!newMessage.trim() || !recipientId) return;
 
         const messageData = {
-            text: newMessage,
-            senderId: currentUser.uid,
-            createdAt: Timestamp.now(),
+            text: newMessage, senderId: currentUser.uid, createdAt: Timestamp.now(),
         };
-        
+
+        const chatRef = doc(db, 'chats', chatId);
         try {
-            const chatRef = doc(db, 'chats', chatId);
             const chatSnap = await getDoc(chatRef);
             const batch = writeBatch(db);
 
             if (!chatSnap.exists()) {
-                batch.set(chatRef, {
-                    members: [currentUser.uid, recipientId],
-                    lastMessage: messageData,
-                });
+                batch.set(chatRef, { members: [currentUser.uid, recipientId], lastMessage: messageData });
             } else {
                 batch.update(chatRef, { lastMessage: messageData });
             }
-            
+
             const newMessageRef = doc(collection(chatRef, 'messages'));
             batch.set(newMessageRef, messageData);
-
             await batch.commit();
             setNewMessage('');
         } catch (error) {
             console.error("Error sending message:", error);
-            alert("메시지 전송 중 오류가 발생했습니다. 권한을 확인해주세요.");
+            alert("메시지 전송 중 오류가 발생했습니다.");
         }
     };
 
-    if (loading) {
-        return <LoadingSpinner />;
-    }
+    if (loading) return <LoadingSpinner />;
+    if (!isAllowed) return <div className="p-4 text-center text-red-500">이 채팅방에 접근할 권한이 없습니다.</div>;
 
-    if (!isAllowed) {
-        return <div className="p-4 text-center text-red-500">이 채팅방에 접근할 권한이 없습니다.</div>;
-    }
-    
     return (
-         <div className="flex flex-col h-full"> 
+         <div className="flex flex-col h-full">
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.map(msg => (
                     <div key={msg.id} className={`flex ${msg.senderId === currentUser.uid ? 'justify-end' : 'justify-start'}`}>
@@ -2082,11 +1901,11 @@ const ClubListPage = () => {
 
     if (clubs === null) return <LoadingSpinner />;
 
-    const myClubs = clubs.filter(club => club.members && club.members.includes(currentUser.uid));
+    const myClubs = clubs.filter(club => club.members?.includes(currentUser.uid));
     const displayedClubs = activeTab === '내 모임' ? myClubs : clubs;
 
     const handleEnterClub = (club) => {
-        if ((club.members && club.members.includes(currentUser.uid)) || !club.password) {
+        if (club.members?.includes(currentUser.uid) || !club.password) {
             navigate(`/clubs/${club.id}`);
         } else {
             setSelectedClub(club);
@@ -2101,21 +1920,17 @@ const ClubListPage = () => {
             try {
                 await updateDoc(clubRef, { members: arrayUnion(currentUser.uid) });
                 navigate(`/clubs/${selectedClub.id}`);
-                setPasswordModalOpen(false);
-                setPassword('');
-                setSelectedClub(null);
-            } catch (error) {
-                console.error("멤버 추가 오류:", error);
-                alert("모임 입장에 실패했습니다. 다시 시도해주세요.");
+            } catch (error) { alert("모임 입장에 실패했습니다."); }
+             finally {
+                setPasswordModalOpen(false); setPassword(''); setSelectedClub(null);
             }
         } else {
             alert('비밀번호가 일치하지 않습니다.');
         }
     };
-    
+
     const handleCreatorClick = (e, creatorId) => {
-        e.stopPropagation();
-        navigate(`/profile/${creatorId}`);
+        e.stopPropagation(); navigate(`/profile/${creatorId}`);
     };
 
     return (
@@ -2123,31 +1938,27 @@ const ClubListPage = () => {
             <Modal isOpen={passwordModalOpen} onClose={() => { setPasswordModalOpen(false); setPassword(''); }}>
                 <h3 className="text-lg font-bold mb-4">{selectedClub?.name}</h3>
                 <p className="mb-4">이 모임은 비밀번호가 필요합니다.</p>
-                <input 
-                    type="password" 
-                    value={password} 
+                <input
+                    type="password"
+                    value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-                    placeholder="비밀번호" 
+                    placeholder="비밀번호"
                     className="w-full p-2 border rounded mb-4"
                 />
                 <button onClick={handlePasswordSubmit} className="w-full bg-[#00462A] text-white py-2 rounded">입장하기</button>
             </Modal>
-            
+
             <div className="flex justify-between items-center mb-4">
                 <div className="flex bg-gray-200 rounded-lg p-1">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('내 모임')}
                         className={`px-4 py-1 text-sm font-semibold rounded-md ${activeTab === '내 모임' ? 'bg-white shadow' : 'text-gray-600'}`}
-                    >
-                        내 모임
-                    </button>
-                    <button 
+                    >내 모임</button>
+                    <button
                         onClick={() => setActiveTab('전체 모임')}
                         className={`px-4 py-1 text-sm font-semibold rounded-md ${activeTab === '전체 모임' ? 'bg-white shadow' : 'text-gray-600'}`}
-                    >
-                        전체 모임
-                    </button>
+                    >전체 모임</button>
                 </div>
                 <button onClick={() => navigate('/clubs/create')} className="bg-[#00462A] text-white font-bold py-2 px-3 rounded-lg hover:bg-[#003a22] flex items-center gap-1 text-sm">
                     <PlusCircle size={16} /> 만들기
@@ -2193,8 +2004,7 @@ const ClubCreatePage = () => {
 
     const handleSubmit = async () => {
         if (!name || !description || !imageFile) {
-            alert('모임 이름, 소개, 대표 사진은 필수입니다.');
-            return;
+            alert('모임 이름, 소개, 대표 사진은 필수입니다.'); return;
         }
         setIsSubmitting(true);
         try {
@@ -2204,12 +2014,7 @@ const ClubCreatePage = () => {
             const photoURL = await getDownloadURL(storageRef);
 
             await addDoc(collection(db, 'clubs'), {
-                name,
-                description,
-                category,
-                password,
-                photoURL,
-                imagePath,
+                name, description, category, password, photoURL, imagePath,
                 creatorId: currentUser.uid,
                 creatorName: currentUser.displayName,
                 members: [currentUser.uid],
@@ -2265,23 +2070,16 @@ const ClubDetailPage = () => {
     const [club, setClub] = useState(null);
     const [members, setMembers] = useState([]);
     const [posts, setPosts] = useState([]);
-    
+
     useEffect(() => {
-        if (!clubId) {
-            navigate('/clubs');
-            return;
-        }
+        if (!clubId) { navigate('/clubs'); return; }
 
         const clubRef = doc(db, 'clubs', clubId);
         const unsubscribeClub = onSnapshot(clubRef, (doc) => {
             if (doc.exists()) {
                 const clubData = { id: doc.id, ...doc.data() };
                 setClub(clubData);
-                if (clubData.members && clubData.members.length > 0) {
-                    fetchMembers(clubData.members);
-                } else {
-                    setMembers([]);
-                }
+                if (clubData.members?.length > 0) fetchMembers(clubData.members);
             } else {
                 alert("삭제되거나 존재하지 않는 모임입니다.");
                 navigate('/clubs');
@@ -2296,7 +2094,6 @@ const ClubDetailPage = () => {
         const fetchMembers = async (memberIds) => {
             try {
                 const memberPromises = [];
-                // Firestore 'in' 쿼리는 30개 아이템 제한이 있음 (최신 SDK)
                 for (let i = 0; i < memberIds.length; i += 30) {
                     const chunk = memberIds.slice(i, i + 30);
                     const q = query(collection(db, 'users'), where('__name__', 'in', chunk));
@@ -2308,20 +2105,13 @@ const ClubDetailPage = () => {
                     snapshot.forEach(doc => fetchedMembers.push({id: doc.id, ...doc.data()}));
                 });
                 setMembers(fetchedMembers);
-            } catch (error) {
-                console.error("멤버 정보 가져오기 오류:", error);
-                setMembers([]);
-            }
+            } catch (error) { console.error("멤버 정보 가져오기 오류:", error); }
         };
 
-        return () => {
-            unsubscribeClub();
-            unsubscribePosts();
-        };
+        return () => { unsubscribeClub(); unsubscribePosts(); };
     }, [clubId, navigate]);
 
     if (club === null) return <LoadingSpinner />;
-
     const isCreator = currentUser.uid === club.creatorId;
 
     return (
@@ -2376,54 +2166,39 @@ const MainLayout = ({ children }) => {
     );
 };
 
-// App.js 파일에서 기존 Header 컴포넌트를 찾아서 아래 코드로 완전히 교체하세요.
-
 const Header = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { currentUser, adminSelectedCity } = useAuth(); // adminSelectedCity도 가져옴
-    
-    // currentUser가 로드되기 전에는 헤더를 렌더링하지 않음 (오류 방지)
-    if (!currentUser) {
-        return null;
-    }
-    
-    const hideHeaderOn = ['/post/write', '/news/write', '/profile/edit', '/clubs/create'];
-    const shouldHide = hideHeaderOn.some(path => location.pathname.startsWith(path) || location.pathname.includes('/edit/'));
+    const { currentUser, adminSelectedCity } = useAuth();
+
+    if (!currentUser) return null;
+
+    const hideHeaderOn = ['/post/write', '/news/write', '/profile/edit', '/clubs/create', '/post/edit', '/news/edit'];
+    const shouldHide = hideHeaderOn.some(path => location.pathname.startsWith(path));
     if (shouldHide) return null;
 
     const mainPages = ['/home'];
     const isSubPage = !mainPages.includes(location.pathname) && location.pathname !== '/';
-    
+
     const getPageTitle = () => {
         const { pathname } = location;
 
         if (pathname === '/home') {
-            // 관리자가 특정 지역 뷰를 보고 있다면 해당 지역 이름 표시
             if (adminSelectedCity) {
-                const cityName = adminSelectedCity.replace(/(특별시|광역시|특별자치시|도|시|군|구)$/, '');
-                return `마을N ${cityName}`;
+                return `마을N ${adminSelectedCity.replace(/(특별시|광역시|특별자치시|도|시|군|구)$/, '')}`;
             }
-            // 관리자 전체 뷰일 경우
-            if (currentUser.isAdmin) {
-                return '마을N';
-            }
-            // 일반 사용자일 경우
-            const city = currentUser.city || '';
-            const shortCityName = city.replace(/(특별시|광역시|특별자치시|도|시|군|구)$/, '');
-            return `마을N ${shortCityName}`;
+            if (currentUser.isAdmin) return '마을N';
+            return `마을N ${currentUser.city?.replace(/(특별시|광역시|특별자치시|도|시|군|구)$/, '') || ''}`;
         }
 
         if(pathname.startsWith('/profile/')) return '프로필';
         if(pathname.startsWith('/post/')) return '게시글';
-        if(pathname.startsWith('/chat/')) {
-            return location.state?.recipientName || '채팅';
-        }
+        if(pathname.startsWith('/chat/')) return location.state?.recipientName || '채팅';
         if(pathname.startsWith('/clubs/')) return '모임';
 
         const titleMap = {
-            '/news': '소식', '/board': '게시판', '/clubs': '모임',
-            '/calendar': '달력', '/search': '검색', '/notifications': '알림', '/chats': '채팅',
+            '/news': '소식', '/board': '게시판', '/calendar': '달력',
+            '/search': '검색', '/notifications': '알림', '/chats': '채팅',
         };
         return titleMap[pathname] || '마을N';
     }
@@ -2441,7 +2216,7 @@ const Header = () => {
                 <Link to="/notifications" className="p-1"><Bell size={24} className="text-gray-600" /></Link>
                 {currentUser && (
                     <Link to={`/profile/${currentUser.uid}`}>
-                        {currentUser.photoURL ? 
+                        {currentUser.photoURL ?
                            <img src={currentUser.photoURL} alt="profile" className="w-8 h-8 rounded-full bg-gray-200 object-cover"/> :
                            <UserCircle size={32} className="text-gray-400"/>
                         }
@@ -2455,15 +2230,15 @@ const Header = () => {
 const BottomNav = () => {
     const location = useLocation();
     const navItems = [
-        { path: '/home', icon: Home, label: '홈' }, 
+        { path: '/home', icon: Home, label: '홈' },
         { path: '/board', icon: LayoutGrid, label: '게시판' },
         { path: '/news', icon: Newspaper, label: '소식' },
         { path: '/clubs', icon: Users, label: '클럽' },
         { path: '/benefits', icon: TicketPercent, label: '혜택' },
     ];
 
-    const hideNavOn = ['/post', '/profile', '/chat', '/search', '/notifications', '/calendar', '/post/write', '/news/write', '/profile/edit', '/clubs/create'];
-    const shouldHide = hideNavOn.some(path => location.pathname.startsWith(path) || location.pathname.includes('/edit/'));
+    const hideNavOn = ['/start', '/region-setup', '/post/', '/profile/', '/chat/', '/search', '/notifications', '/calendar'];
+    const shouldHide = hideNavOn.some(path => location.pathname.startsWith(path));
     if (shouldHide) return null;
 
     return (
@@ -2491,17 +2266,10 @@ const BottomNav = () => {
     );
 };
 
-// App.js에서 ProtectedRoute를 이 코드로 교체하세요.
-
-// App.js에서 기존 ProtectedRoute 컴포넌트를 이 코드로 완전히 교체하세요.
-
-// App.js 파일에서 기존 ProtectedRoute 컴포넌트를 이 코드로 완전히 교체하세요.
-
 const ProtectedRoute = ({ children }) => {
     const { currentUser, loading } = useAuth();
     const location = useLocation();
 
-    // 1. 최우선: 로딩 중일 때는 무조건 로딩 스피너 표시
     if (loading) {
         return (
             <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
@@ -2510,106 +2278,73 @@ const ProtectedRoute = ({ children }) => {
         );
     }
 
-    // 2. 로그인하지 않은 사용자 처리
     if (!currentUser) {
-        // /start 페이지에 있다면 그대로 머물게 함
-        if (location.pathname === '/start') {
-            return children;
-        }
-        // 다른 페이지에 접근하려고 하면 /start로 보냄
-        return <Navigate to="/start" replace />;
+        return location.pathname === '/start' ? children : <Navigate to="/start" replace />;
     }
 
-    // --- 여기서부터는 currentUser가 있는 경우 (로그인 한 사용자) ---
-    
-    // 3. 관리자 처리
     if (currentUser.isAdmin) {
-        // 관리자가 /start나 /region-setup에 있다면 /home으로 보냄
-        if (location.pathname === '/start' || location.pathname === '/region-setup') {
-            return <Navigate to="/home" replace />;
-        }
-        // 그 외의 페이지는 정상적으로 보여줌
-        return children;
+        return (location.pathname === '/start' || location.pathname === '/region-setup') ? <Navigate to="/home" replace /> : children;
     }
     
-    // 4. 일반 사용자 처리
-    if (!currentUser.isAdmin) {
-        // 지역 정보가 있는 경우 (설정 완료)
-        if (currentUser.city) {
-            // /start나 /region-setup에 있다면 /home으로 보냄
-            if (location.pathname === '/start' || location.pathname === '/region-setup') {
-                return <Navigate to="/home" replace />;
-            }
-            // 그 외의 페이지는 정상적으로 보여줌
-            return children;
-        }
-        
-        // 지역 정보가 없는 경우 (설정 필요)
-        if (!currentUser.city) {
-            // /region-setup이 아닌 다른 곳에 있다면 /region-setup으로 보냄
-            if (location.pathname !== '/region-setup') {
-                return <Navigate to="/region-setup" replace />;
-            }
-            // /region-setup 페이지에 있다면 정상적으로 보여줌
-            return children;
-        }
+    if (!currentUser.city) {
+        return location.pathname === '/region-setup' ? children : <Navigate to="/region-setup" replace />;
+    }
+    
+    if (currentUser.city) {
+        return (location.pathname === '/start' || location.pathname === '/region-setup') ? <Navigate to="/home" replace /> : children;
     }
 
-    // 위 모든 조건에 해당하지 않는 예외적인 경우를 위해 기본 children 반환
     return children;
 };
+
 // --- 최상위 App 컴포넌트 ---
-// App.js에서 최상위 App 컴포넌트를 이 코드로 완전히 교체하세요.
-
-// 최상위 App 컴포넌트
-
-// App.js에서 최상위 App 컴포넌트를 이 코드로 완전히 교체하세요.
-
 function App() {
     return (
-        <AuthProvider>
-            <BrowserRouter>
-                <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
-                    <Routes>
-                        {/* 1. 로그인/지역설정이 필요 없는 공개 라우트 */}
-                        <Route path="/start" element={<StartPage />} />
-                        <Route path="/region-setup" element={<RegionSetupPage />} />
-
-                        {/* 2. 로그인이 필요한 보호된 라우트 */}
-                        <Route path="/*" element={
-                            <ProtectedRoute>
-                                <MainLayout>
-                                    <Routes>
-                                        <Route path="/home" element={<HomePage />} />
-                                        <Route path="/news" element={<NewsPage />} />
-                                        <Route path="/news/write" element={<NewsWritePage />} />
-                                        <Route path="/news/edit/:newsId" element={<NewsWritePage />} />
-                                        <Route path="/board" element={<BoardPage />} />
-                                        <Route path="/post/write" element={<WritePage />} />
-                                        <Route path="/post/edit/:postId" element={<WritePage />} />
-                                        <Route path="/post/:postId" element={<PostDetailPage />} />
-                                        <Route path="/calendar" element={<CalendarPage />} />
-                                        <Route path="/profile/:userId" element={<UserProfilePage />} />
-                                        <Route path="/profile/edit" element={<ProfileEditPage />} />
-                                        <Route path="/search" element={<SearchPage />} />
-                                        <Route path="/notifications" element={<NotificationsPage />} />
-                                        <Route path="/chats" element={<ChatListPage />} />
-                                        <Route path="/chat/:chatId" element={<ChatPage />} />
-                                        <Route path="/clubs" element={<ClubListPage />} />
-                                        <Route path="/clubs/create" element={<ClubCreatePage />} />
-                                        <Route path="/clubs/:clubId" element={<ClubDetailPage />} />
-                                        {/* 다른 모든 경로를 /home으로 리디렉션 */}
-                                        <Route path="*" element={<Navigate to="/home" replace />} />
-                                    </Routes>
-                                </MainLayout>
-                            </ProtectedRoute>
-                        } />
-                    </Routes>
-                </div>
-            </BrowserRouter>
-        </AuthProvider>
+        <HelmetProvider>
+            <AuthProvider>
+                <BrowserRouter>
+                    <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
+                        <Routes>
+                            <Route path="/start" element={<StartPage />} />
+                            <Route path="/region-setup" element={
+                                <ProtectedRoute>
+                                    <RegionSetupPage />
+                                </ProtectedRoute>
+                            } />
+                            
+                            <Route path="/*" element={
+                                <ProtectedRoute>
+                                    <MainLayout>
+                                        <Routes>
+                                            <Route path="/home" element={<HomePage />} />
+                                            <Route path="/news" element={<NewsPage />} />
+                                            <Route path="/news/write" element={<NewsWritePage />} />
+                                            <Route path="/news/edit/:newsId" element={<NewsWritePage />} />
+                                            <Route path="/board" element={<BoardPage />} />
+                                            <Route path="/post/write" element={<WritePage />} />
+                                            <Route path="/post/edit/:postId" element={<WritePage />} />
+                                            <Route path="/post/:postId" element={<PostDetailPage />} />
+                                            <Route path="/calendar" element={<CalendarPage />} />
+                                            <Route path="/profile/:userId" element={<UserProfilePage />} />
+                                            <Route path="/profile/edit" element={<ProfileEditPage />} />
+                                            <Route path="/search" element={<SearchPage />} />
+                                            <Route path="/notifications" element={<NotificationsPage />} />
+                                            <Route path="/chats" element={<ChatListPage />} />
+                                            <Route path="/chat/:chatId" element={<ChatPage />} />
+                                            <Route path="/clubs" element={<ClubListPage />} />
+                                            <Route path="/clubs/create" element={<ClubCreatePage />} />
+                                            <Route path="/clubs/:clubId" element={<ClubDetailPage />} />
+                                            <Route path="*" element={<Navigate to="/home" replace />} />
+                                        </Routes>
+                                    </MainLayout>
+                                </ProtectedRoute>
+                            } />
+                        </Routes>
+                    </div>
+                </BrowserRouter>
+            </AuthProvider>
+        </HelmetProvider>
     );
 }
 
 export default App;
-// --- END OF FILE App.js ---
