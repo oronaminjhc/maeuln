@@ -2391,31 +2391,45 @@ const ProtectedRoute = ({ children }) => {
 
 // 최상위 App 컴포넌트
 
+// App.js에서 최상위 App 컴포넌트를 이 코드로 완전히 교체하세요.
+
 function App() {
     return (
         <AuthProvider>
             <BrowserRouter>
                 <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
-                    {/* 모든 라우트를 ProtectedRoute로 감쌉니다. */}
                     <Routes>
+                        {/* 1. 로그인/지역설정이 필요 없는 공개 라우트 */}
+                        <Route path="/start" element={<StartPage />} />
+                        <Route path="/region-setup" element={<RegionSetupPage />} />
+
+                        {/* 2. 로그인이 필요한 보호된 라우트 */}
                         <Route path="/*" element={
                             <ProtectedRoute>
-                                <Routes>
-                                    {/* 공개 라우트 */}
-                                    <Route path="/start" element={<StartPage />} />
-                                    <Route path="/region-setup" element={<RegionSetupPage />} />
-
-                                    {/* 보호된 라우트 */}
-                                    <Route path="/*" element={
-                                        <MainLayout>
-                                            <Routes>
-                                                <Route path="/home" element={<HomePage />} />
-                                                {/* ... 나머지 모든 페이지 라우트 ... */}
-                                                <Route path="*" element={<Navigate to="/home" replace />} />
-                                            </Routes>
-                                        </MainLayout>
-                                    } />
-                                </Routes>
+                                <MainLayout>
+                                    <Routes>
+                                        <Route path="/home" element={<HomePage />} />
+                                        <Route path="/news" element={<NewsPage />} />
+                                        <Route path="/news/write" element={<NewsWritePage />} />
+                                        <Route path="/news/edit/:newsId" element={<NewsWritePage />} />
+                                        <Route path="/board" element={<BoardPage />} />
+                                        <Route path="/post/write" element={<WritePage />} />
+                                        <Route path="/post/edit/:postId" element={<WritePage />} />
+                                        <Route path="/post/:postId" element={<PostDetailPage />} />
+                                        <Route path="/calendar" element={<CalendarPage />} />
+                                        <Route path="/profile/:userId" element={<UserProfilePage />} />
+                                        <Route path="/profile/edit" element={<ProfileEditPage />} />
+                                        <Route path="/search" element={<SearchPage />} />
+                                        <Route path="/notifications" element={<NotificationsPage />} />
+                                        <Route path="/chats" element={<ChatListPage />} />
+                                        <Route path="/chat/:chatId" element={<ChatPage />} />
+                                        <Route path="/clubs" element={<ClubListPage />} />
+                                        <Route path="/clubs/create" element={<ClubCreatePage />} />
+                                        <Route path="/clubs/:clubId" element={<ClubDetailPage />} />
+                                        {/* 다른 모든 경로를 /home으로 리디렉션 */}
+                                        <Route path="*" element={<Navigate to="/home" replace />} />
+                                    </Routes>
+                                </MainLayout>
                             </ProtectedRoute>
                         } />
                     </Routes>
