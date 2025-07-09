@@ -686,7 +686,6 @@ const NewsPage = () => {
 };
 
 // NewsPage 컴포넌트가 끝나는 지점...
-};
 
 // ▼▼▼ 여기에 아래 코드를 붙여넣으세요 ▼▼▼
 const NewsWritePage = () => {
@@ -804,8 +803,6 @@ const NewsWritePage = () => {
     );
 };
 
-// NewsWritePage 컴포넌트가 끝나는 지점...
-};
 
 // ▼▼▼ 여기에 아래 코드를 붙여넣으세요 ▼▼▼
 const CalendarPage = () => {
