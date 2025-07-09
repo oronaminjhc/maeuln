@@ -297,6 +297,8 @@ const StartPage = () => {
     );
 };
 
+// src/App.js 파일의 RegionSetupPage 함수
+
 const RegionSetupPage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
@@ -308,17 +310,18 @@ const RegionSetupPage = () => {
     const [loading, setLoading] = useState(false);
     const [apiLoading, setApiLoading] = useState(true);
     const [error, setError] = useState('');
+    
+    // ★ 저장이 시작되었는지 추적하는 상태 추가
+    const [isSaving, setIsSaving] = useState(false);
 
-    // ★ 1. 저장이 완료되었음을 알리는 상태를 추가합니다.
-    const [isSaveComplete, setIsSaveComplete] = useState(false);
-
-    // ★ 2. 저장이 완료된 후, currentUser의 city 정보가 업데이트되는 것을 감지하는 로직을 추가합니다.
+    // ★ currentUser의 상태가 바뀔 때마다 감지하는 useEffect
     useEffect(() => {
-        // isSaveComplete 플래그가 true이고, currentUser에 city 정보가 생겼을 때만 실행됩니다.
-        if (isSaveComplete && currentUser?.city) {
+        // 저장이 시작되었고, currentUser에 city 정보가 들어왔다면,
+        // 이제 안전하게 홈으로 이동합니다.
+        if (isSaving && currentUser?.city) {
             navigate('/home');
         }
-    }, [currentUser, isSaveComplete, navigate]); // currentUser나 isSaveComplete가 바뀔 때마다 확인합니다.
+    }, [currentUser, isSaving, navigate]); // currentUser나 isSaving 상태가 바뀔 때마다 실행
 
 
     useEffect(() => {
@@ -339,11 +342,9 @@ const RegionSetupPage = () => {
                 setSelectedCity('');
                 const cityData = await fetchCities(selectedRegion);
                 setCities(cityData);
-
                 if (cityData.length === 1) {
                     setSelectedCity(cityData[0]);
                 }
-
                 setApiLoading(false);
             };
             loadCities();
@@ -359,6 +360,10 @@ const RegionSetupPage = () => {
         }
         setLoading(true);
         setError('');
+        
+        // ★ 여기서 저장 시작을 알립니다.
+        setIsSaving(true); 
+        
         try {
             const userRef = doc(db, "users", currentUser.uid);
             await setDoc(userRef, {
@@ -369,21 +374,17 @@ const RegionSetupPage = () => {
                 city: selectedCity,
                 town: '',
                 createdAt: Timestamp.now(),
-                followerCount: 0,
-                followers: [],
-                following: [],
-                likedNews: []
             }, { merge: true });
-
-            // ★ 3. 여기서 바로 이동하는 대신, 저장 완료 플래그만 true로 바꿔줍니다.
-            setIsSaveComplete(true);
+            
+            // 여기서 navigate('/home')을 직접 호출하지 않습니다.
+            // 위의 useEffect가 알아서 처리해줄 것입니다.
 
         } catch (e) {
             console.error("Region save error:", e);
             setError("저장에 실패했습니다. 다시 시도해주세요.");
-            setLoading(false); // 에러가 발생했을 때만 로딩 상태를 풀어줍니다.
+            setLoading(false); // 에러 발생 시에만 로딩과 저장 상태를 리셋
+            setIsSaving(false);
         }
-        // 성공했을 때는 로딩 상태를 풀지 않습니다. 페이지가 자연스럽게 넘어가므로 필요 없습니다.
     };
 
     const isCityDropdownDisabled = !selectedRegion || apiLoading || cities.length <= 1;
@@ -406,7 +407,7 @@ const RegionSetupPage = () => {
                         disabled={isCityDropdownDisabled}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200"
                     >
-                        <option value="">시/군 선택</option>
+                        <option value="">시/군/구 선택</option>
                         {apiLoading && selectedRegion ? <option>불러오는 중...</option> : cities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     {error && <p className="text-red-500 text-sm text-center">{error}</p>}
@@ -2285,12 +2286,13 @@ const BottomNav = () => {
     );
 };
 
+// src/App.js 파일의 ProtectedRoute 함수
+
 const ProtectedRoute = ({ children }) => {
     const { currentUser, loading } = useAuth();
     const location = useLocation();
 
-    // 1. 인증 정보를 확인하거나, Firestore에서 프로필 정보를 불러오는 중이면 로딩 화면을 보여줍니다.
-    // currentUser.isFirestoreDataLoaded 체크가 핵심입니다!
+    // 1. Firebase Auth 로딩 중이거나, Firestore 유저 정보 로딩이 끝나지 않았으면 로딩 스피너를 보여줍니다.
     if (loading || (currentUser && !currentUser.isFirestoreDataLoaded)) {
         return (
             <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
@@ -2299,43 +2301,42 @@ const ProtectedRoute = ({ children }) => {
         );
     }
 
-    // --- 여기부터는 로딩이 끝난 후의 로직입니다 ---
-
-    // 2. 로그인하지 않은 사용자 처리
+    // 2. 로그아웃 상태일 때
     if (!currentUser) {
-        // /start 페이지만 허용하고, 다른 곳으로 가려고 하면 /start로 보냅니다.
+        // /start 페이지만 허용하고, 나머지는 /start로 보냅니다.
         return location.pathname === '/start' ? children : <Navigate to="/start" replace />;
     }
 
-    // 3. 관리자 사용자 처리
+    // --- 아래부터는 로그인 상태 ---
+
+    // 3. 관리자일 때
     if (currentUser.isAdmin) {
-        // 관리자가 실수로 설정 페이지로 가면 /home으로 보냅니다.
+        // /start 또는 /region-setup에 있다면 /home으로 보냅니다.
         if (location.pathname === '/start' || location.pathname === '/region-setup') {
             return <Navigate to="/home" replace />;
         }
-        // 그 외 모든 페이지는 접근 가능합니다.
-        return children;
+        return children; // 그 외 페이지는 모두 허용
     }
 
-    // 4. 지역 설정이 필요한 일반 사용자 처리
+    // 4. 일반 사용자이며 지역 정보가 없을 때
     if (!currentUser.city) {
-        // /region-setup 페이지만 허용하고, 다른 곳으로 가려고 하면 /region-setup으로 보냅니다.
+        // /region-setup 페이지만 허용하고, 나머지는 /region-setup으로 보냅니다.
         return location.pathname === '/region-setup' ? children : <Navigate to="/region-setup" replace />;
     }
 
-    // 5. 모든 설정이 완료된 일반 사용자 처리
+    // 5. 일반 사용자이며 지역 정보가 있을 때
     if (currentUser.city) {
-        // 설정이 끝난 사용자가 다시 설정 페이지로 가면 /home으로 보냅니다.
+        // /start 또는 /region-setup에 있다면 /home으로 보냅니다.
         if (location.pathname === '/start' || location.pathname === '/region-setup') {
             return <Navigate to="/home" replace />;
         }
-        // 그 외 모든 페이지는 접근 가능합니다.
-        return children;
+        return children; // 그 외 페이지는 모두 허용
     }
-
-    // 혹시 모를 예외 상황 시 안전하게 /start로 보냅니다.
+    
+    // 예외 상황 발생 시, 안전하게 /start로 보냅니다.
     return <Navigate to="/start" replace />;
 };
+
 // --- 최상위 App 컴포넌트 ---
 function App() {
     return (
