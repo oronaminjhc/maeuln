@@ -1852,23 +1852,35 @@ const ChatListPage = () => {
     );
 };
 
+// App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const ChatPage = () => {
     const { currentUser } = useAuth();
     const { chatId } = useParams();
     const location = useLocation();
-    const { recipientId } = location.state || {};
+    
+    // location.state가 없을 경우를 대비하여 기본값 설정
+    const recipientId = location.state?.recipientId;
 
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef(null);
     
     useEffect(() => {
+        // chatId가 없으면 아무것도 하지 않음
+        if (!chatId) return;
+
         const messagesRef = collection(db, 'chats', chatId, 'messages');
         const q = query(messagesRef, orderBy('createdAt', 'asc'));
-        const unsubscribe = onSnapshot(q, snapshot => {
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (error) => {
+            // 권한 오류 등으로 리스너가 실패할 경우
+            console.error("Error listening to messages:", error);
         });
-        return unsubscribe;
+
+        return () => unsubscribe();
     }, [chatId]);
     
     useEffect(() => {
@@ -1877,7 +1889,12 @@ const ChatPage = () => {
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
-        if (!newMessage.trim() || !recipientId) return;
+        
+        // 메시지 내용이 없거나, 상대방 정보가 없으면 전송 불가
+        if (!newMessage.trim() || !recipientId) {
+            if (!recipientId) console.error("Recipient ID is missing.");
+            return;
+        }
 
         const messageData = {
             text: newMessage,
@@ -1886,20 +1903,34 @@ const ChatPage = () => {
         };
         
         try {
-            const batch = writeBatch(db);
             const chatRef = doc(db, 'chats', chatId);
+            const chatSnap = await getDoc(chatRef);
+
+            const batch = writeBatch(db);
+
+            // ★★★ 핵심 로직 ★★★
+            // 채팅방 문서가 존재하지 않으면, 먼저 생성합니다.
+            // 이 문서에는 보안 규칙을 통과하기 위한 `members` 필드가 반드시 포함되어야 합니다.
+            if (!chatSnap.exists()) {
+                batch.set(chatRef, {
+                    members: [currentUser.uid, recipientId],
+                    lastMessage: messageData,
+                });
+            } else {
+                // 기존 채팅방이 있다면, 마지막 메시지만 업데이트합니다.
+                batch.update(chatRef, { lastMessage: messageData });
+            }
+            
+            // 새 메시지 문서를 'messages' 서브컬렉션에 추가합니다.
             const newMessageRef = doc(collection(chatRef, 'messages'));
-
             batch.set(newMessageRef, messageData);
-            batch.set(chatRef, {
-                members: [currentUser.uid, recipientId],
-                lastMessage: messageData,
-            }, { merge: true });
 
+            // 모든 작업을 한 번에 커밋합니다.
             await batch.commit();
             setNewMessage('');
         } catch (error) {
             console.error("Error sending message:", error);
+            alert("메시지 전송 중 오류가 발생했습니다. 권한을 확인해주세요.");
         }
     };
     
