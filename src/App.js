@@ -250,6 +250,8 @@ const Calendar = ({events = {}, onDateClick = () => {}}) => {
 // ▼▼▼ 페이지 컴포넌트들 ▼▼▼
 // =================================================================
 
+// App.js 파일에서 기존 StartPage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const StartPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -264,7 +266,7 @@ const StartPage = () => {
         } catch (error) {
             console.error("Kakao Login Error:", error);
             if (error.code !== 'auth/popup-closed-by-user') {
-                 setError("카카오 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.");
+                 setError("카카오톡 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.");
             }
         } finally {
             setLoading(false);
@@ -273,16 +275,17 @@ const StartPage = () => {
 
     return (
         <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4">
+            {/* ★★★ 이 부분이 수정되었습니다 ★★★ */}
             <div className="text-center mb-8 flex flex-col items-center">
                 <Logo size={80} />
                 <h1 className="text-3xl font-bold text-gray-800 mt-4">마을N</h1>
-                <p className="text-gray-600 mt-2 text-center">전국 모든 마을의 이야기<br/>'마을N'에서 확인하세요!</p>
+                <p className="text-gray-600 mt-2 text-center">전국 모든 지역. 우리 마을 이야기<br/>'마을N'에서 확인하세요!</p>
             </div>
             <div className="w-full max-w-xs">
                 {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
                 <button onClick={handleKakaoLogin} disabled={loading} className="w-full bg-[#FEE500] text-[#3C1E1E] font-bold py-3 px-4 rounded-lg flex items-center justify-center shadow-lg hover:bg-yellow-400 transition-colors disabled:bg-gray-400">
                     <svg className="w-6 h-6 mr-2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c.89 0 1.75-.12 2.56-.34l-1.39 4.34c-.08.24.16.45.4.39l4.9-3.06c1.8-1.48 2.53-3.88 2.53-6.33C22 6.48 17.52 2 12 2z" fill="#3C1E1E"/></svg>
-                    {loading ? "로그인 중..." : "카카오로 3초만에 시작하기"}
+                    {loading ? "로그인 중..." : "카카오톡 간편 로그인"}
                 </button>
             </div>
         </div>
@@ -915,6 +918,8 @@ const CalendarPage = () => {
 
 // 예시: BoardPage
 
+// App.js 파일에서 기존 BoardPage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const BoardPage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
@@ -927,27 +932,29 @@ const BoardPage = () => {
     const categories = ['전체', '일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타'];
 
     useEffect(() => {
-        if (!currentUser || (!targetCity && !currentUser.isAdmin)) return;
+        if (!currentUser || (!targetCity && !currentUser.isAdmin)) {
+            setPosts([]);
+            return;
+        };
         
         const postsCollection = collection(db, "posts");
-        let q;
+        let queryConstraints = [];
 
-        const baseQuery = (categoryFilter) => {
-            if (categoryFilter === '전체') {
-                return [orderBy("createdAt", "desc"), limit(50)];
-            }
-            return [where("category", "==", categoryFilter), orderBy("createdAt", "desc"), limit(50)];
-        };
-
-        if (targetCity) { // 관리자가 특정 지역을 보거나, 일반 사용자인 경우
-            q = query(postsCollection, where("city", "==", targetCity), ...baseQuery(filter));
-        } else { // 관리자가 전체 뷰를 보는 경우
-             if (filter === '전체') {
-                q = query(postsCollection, orderBy("createdAt", "desc"), limit(50));
-            } else {
-                q = query(postsCollection, where("category", "==", filter), orderBy("createdAt", "desc"), limit(50));
-            }
+        // 지역 필터링
+        if (targetCity) {
+            queryConstraints.push(where("city", "==", targetCity));
         }
+
+        // 카테고리 필터링
+        if (filter !== '전체') {
+            queryConstraints.push(where("category", "==", filter));
+        }
+
+        // 정렬 및 제한
+        queryConstraints.push(orderBy("createdAt", "desc"));
+        queryConstraints.push(limit(50));
+        
+        const q = query(postsCollection, ...queryConstraints);
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -964,7 +971,7 @@ const BoardPage = () => {
     }
 
     return (
-        <div className="p-4">
+        <div className="p-4 pb-20">
             <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {categories.map(cat => (
                     <button
@@ -1017,6 +1024,8 @@ const BoardPage = () => {
     );
 };
 
+// App.js 파일에서 기존 WritePage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const WritePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -1029,10 +1038,44 @@ const WritePage = () => {
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // 관리자용 지역 선택 상태
+    const [allRegions, setAllRegions] = useState([]);
+    const [selectedPostRegion, setSelectedPostRegion] = useState(itemToEdit ? `${itemToEdit.region}|${itemToEdit.city}` : '');
+
     const userCity = currentUser?.city;
     const dynamicMomCategory = `${userCity}맘`;
     const categories = ['일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타'];
     const [category, setCategory] = useState(itemToEdit?.category || '일상');
+
+    // 관리자일 경우 지역 목록 불러오기
+    useEffect(() => {
+        if (currentUser?.isAdmin) {
+            const loadAllRegions = async () => {
+                const sidos = await fetchRegions();
+                const allCitiesPromises = sidos.map(sido => fetchCities(sido));
+                const allCitiesArrays = await Promise.all(allCitiesPromises);
+                
+                const flattenedRegions = [];
+                sidos.forEach((sido, index) => {
+                    allCitiesArrays[index].forEach(city => {
+                        if (sido === city) {
+                             if (!flattenedRegions.find(r => r.city === sido)) {
+                                flattenedRegions.push({ region: sido, city: city, label: sido });
+                            }
+                        } else {
+                            flattenedRegions.push({ region: sido, city: city, label: `${sido} ${city}` });
+                        }
+                    });
+                });
+                setAllRegions(flattenedRegions);
+                // 수정 모드일 경우, 기본값을 설정
+                if (itemToEdit) {
+                    setSelectedPostRegion(`${itemToEdit.region}|${itemToEdit.city}`);
+                }
+            };
+            loadAllRegions();
+        }
+    }, [currentUser?.isAdmin, itemToEdit]);
 
     useEffect(() => {
         return () => {
@@ -1058,6 +1101,10 @@ const WritePage = () => {
             alert('제목과 내용을 모두 입력해주세요.');
             return;
         }
+        if (currentUser.isAdmin && !selectedPostRegion) {
+            alert('게시글을 등록할 지역을 선택해주세요.');
+            return;
+        }
         if (isSubmitting) return;
         setIsSubmitting(true);
 
@@ -1076,29 +1123,35 @@ const WritePage = () => {
                 imagePath = newImagePath;
             }
 
+            const [region, city] = currentUser.isAdmin 
+                ? selectedPostRegion.split('|') 
+                : [currentUser.region, currentUser.city];
+
             const postData = {
                 title,
                 content,
                 category,
                 imageUrl,
                 imagePath,
-                updatedAt: Timestamp.now()
+                updatedAt: Timestamp.now(),
+                region,
+                city,
             };
+            
+            // 수정일 경우, 생성 관련 필드는 건드리지 않음
+            if (!itemToEdit) {
+                postData.authorId = currentUser.uid;
+                postData.authorName = currentUser.displayName;
+                postData.createdAt = Timestamp.now();
+                postData.likes = [];
+                postData.bookmarks = [];
+                postData.commentCount = 0;
+            }
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'posts', itemToEdit.id), postData);
             } else {
-                await addDoc(collection(db, 'posts'), {
-                    ...postData,
-                    authorId: currentUser.uid,
-                    authorName: currentUser.displayName,
-                    region: currentUser.region,
-                    city: currentUser.city,
-                    createdAt: Timestamp.now(),
-                    likes: [],
-                    bookmarks: [],
-                    commentCount: 0,
-                });
+                await addDoc(collection(db, 'posts'), postData);
             }
             navigate('/board');
         } catch (error) {
@@ -1120,6 +1173,22 @@ const WritePage = () => {
                 </button>
             </div>
             <div className="p-4 space-y-4">
+                {currentUser.isAdmin && (
+                    <div>
+                        <label htmlFor="post-region-select" className="block text-sm font-medium text-gray-700 mb-1">게시 지역 선택</label>
+                        <select
+                            id="post-region-select"
+                            value={selectedPostRegion}
+                            onChange={(e) => setSelectedPostRegion(e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                        >
+                            <option value="">지역을 선택하세요</option>
+                            {allRegions.map(r => (
+                                <option key={r.label} value={`${r.region}|${r.city}`}>{r.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {categories.map(cat => (
                         <button key={cat} onClick={() => setCategory(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${category === cat ? `${getCategoryStyle(cat, userCity).bgStrong} text-white` : 'bg-gray-200 text-gray-700'}`}>{cat}</button>
