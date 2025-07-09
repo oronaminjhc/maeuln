@@ -77,41 +77,48 @@ const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [adminSelectedCity, setAdminSelectedCity] = useState(null); 
 
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                const userRef = doc(db, "users", user.uid);
-                const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
-                    let finalUser = { ...user };
-                    // ★★★ 수정: isFirestoreDataLoaded 플래그 추가
+  // App.js에서 AuthProvider의 useEffect를 이 코드로 교체하세요.
 
-  			if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
-                 	   finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
-              	  }
-                    if (userSnap.exists()) {
-                        const userData = userSnap.data();
-                        finalUser = { ...user, ...userData, photoURL: userData.photoURL || user.photoURL, isFirestoreDataLoaded: true };
-                    } else {
-                        // Firestore 문서가 없어도 로드 시도는 끝났음을 표시
-                        finalUser.isFirestoreDataLoaded = true;
+useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+            const userRef = doc(db, "users", user.uid);
+            const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
+                let finalUser = { ...user };
+                
+                // photoURL이 있고 http로 시작하면 https로 변경
+                if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
+                    finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
+                }
+
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+                    let firestorePhotoURL = userData.photoURL || finalUser.photoURL;
+                    if (firestorePhotoURL && firestorePhotoURL.startsWith('http://')) {
+                        firestorePhotoURL = firestorePhotoURL.replace('http://', 'https');
                     }
-                    finalUser.isAdmin = user.uid === ADMIN_UID;
-                    setCurrentUser(finalUser);
-                    setLoading(false);
-                }, (error) => {
-                    console.error("User doc snapshot error:", error);
-                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
-                    setCurrentUser(finalUser);
-                    setLoading(false);
-                });
-                return () => userUnsubscribe();
-            } else {
-                setCurrentUser(null);
+                    finalUser = { ...user, ...userData, photoURL: firestorePhotoURL, isFirestoreDataLoaded: true };
+                } else {
+                    finalUser.isFirestoreDataLoaded = true;
+                }
+
+                finalUser.isAdmin = user.uid === ADMIN_UID;
+                setCurrentUser(finalUser);
                 setLoading(false);
-            }
-        });
-        return () => unsubscribe();
-    }, []);
+            }, (error) => {
+                console.error("User doc snapshot error:", error);
+                const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
+                setCurrentUser(finalUser);
+                setLoading(false);
+            });
+            return () => userUnsubscribe();
+        } else {
+            setCurrentUser(null);
+            setLoading(false);
+        }
+    });
+    return () => unsubscribe();
+}, []);
 
     const value = { currentUser, loading, adminSelectedCity, setAdminSelectedCity };
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -1856,161 +1863,65 @@ const ChatListPage = () => {
 
 // App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
 
-const ChatPage = () => {
+// App.js 파일에서 기존 ChatListPage 컴포넌트를 이 코드로 완전히 교체하세요.
+
+const ChatListPage = () => {
     const { currentUser } = useAuth();
-    const { chatId } = useParams();
-    const location = useLocation();
-    
-    const recipientId = location.state?.recipientId;
+    const navigate = useNavigate();
+    const [chats, setChats] = useState(null);
 
-    const [messages, setMessages] = useState([]);
-    const [newMessage, setNewMessage] = useState('');
-    const [isAllowed, setIsAllowed] = useState(false); // 채팅방 접근 권한 상태
-    const [loading, setLoading] = useState(true); // 채팅방 정보 로딩 상태
-    const messagesEndRef = useRef(null);
-    
-    // 메시지 목록을 실시간으로 구독하는 useEffect
     useEffect(() => {
-        if (!chatId || !currentUser) return;
-
-        let unsubscribe = () => {};
-
-        const checkPermissionAndFetchMessages = async () => {
-            const chatRef = doc(db, 'chats', chatId);
-            
-            try {
-                // onSnapshot으로 채팅방 문서의 변화를 실시간 감지
-                unsubscribe = onSnapshot(chatRef, (chatSnap) => {
-                    if (chatSnap.exists()) {
-                        const data = chatSnap.data();
-                        if (data.members?.includes(currentUser.uid)) {
-                            // 권한이 있으면 메시지 구독 시작
-                            setIsAllowed(true);
-                            const messagesRef = collection(chatRef, 'messages');
-                            const q = query(messagesRef, orderBy('createdAt', 'asc'));
-                            
-                            const messagesUnsubscribe = onSnapshot(q, (snapshot) => {
-                                setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                            });
-                            // 중첩 구독 해제를 위해 반환
-                            return messagesUnsubscribe;
-                        } else {
-                            console.warn("접근 권한이 없습니다.");
-                            setIsAllowed(false);
-                        }
-                    } else {
-                        // 채팅방이 아직 생성되지 않은 상태
-                        console.warn("채팅방이 존재하지 않지만, 첫 메시지 전송 시 생성됩니다.");
-                        // 첫 메시지를 보낼 수 있도록 허용 상태로 둠
-                        setIsAllowed(true); 
-                    }
-                    setLoading(false);
-                });
-            } catch (error) {
-                console.error("Error checking chat permission:", error);
-                setLoading(false);
-            }
-        };
-
-        checkPermissionAndFetchMessages();
-
-        // 컴포넌트 언마운트 시 모든 구독 해제
-        return () => {
-            if (typeof unsubscribe === 'function') {
-                unsubscribe();
-            }
-        };
-    }, [chatId, currentUser]);
-    
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
-
-    const handleSendMessage = async (e) => {
-        e.preventDefault();
+        if (!currentUser) return;
         
-        if (!newMessage.trim() || !recipientId) {
-            if (!recipientId) console.error("Recipient ID is missing.");
-            return;
-        }
-
-        const messageData = {
-            text: newMessage,
-            senderId: currentUser.uid,
-            createdAt: Timestamp.now(),
-        };
+        const q = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid));
         
-        try {
-            const chatRef = doc(db, 'chats', chatId);
-            const chatSnap = await getDoc(chatRef);
-            const batch = writeBatch(db);
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
+            const chatsData = await Promise.all(snapshot.docs.map(async (docSnap) => {
+                const chatData = docSnap.data();
+                const otherMemberId = chatData.members.find(id => id !== currentUser.uid);
+                if (!otherMemberId) return null;
+                const userDoc = await getDoc(doc(db, 'users', otherMemberId));
+                return { 
+                    id: docSnap.id, 
+                    ...chatData, 
+                    otherUser: userDoc.exists() ? {uid: userDoc.id, ...userDoc.data()} : { displayName: '알 수 없음', uid: otherMemberId }, 
+                };
+            }));
+            setChats(chatsData.filter(Boolean));
+        }, (error) => {
+            // ★★★ 추가: onSnapshot에서 권한 오류 발생 시 처리
+            console.error("Error listening to chat list:", error);
+            // 사용자에게 피드백을 주거나, 빈 목록으로 처리
+            setChats([]); 
+        });
 
-            // 채팅방이 없는 경우, 먼저 생성
-            if (!chatSnap.exists()) {
-                batch.set(chatRef, {
-                    members: [currentUser.uid, recipientId],
-                    lastMessage: messageData,
-                });
-            } else {
-                // 채팅방이 있지만, 혹시 모를 상황에 대비해 멤버 추가 (필요 시)
-                const data = chatSnap.data();
-                if (!data.members?.includes(currentUser.uid)) {
-                    batch.update(chatRef, { members: arrayUnion(currentUser.uid) });
-                }
-                // 마지막 메시지 업데이트
-                batch.update(chatRef, { lastMessage: messageData });
-            }
-            
-            // 새 메시지 문서 추가
-            const newMessageRef = doc(collection(chatRef, 'messages'));
-            batch.set(newMessageRef, messageData);
+        return () => unsubscribe();
+    }, [currentUser]);
 
-            await batch.commit();
-            setNewMessage('');
-        } catch (error) {
-            console.error("Error sending message:", error);
-            alert("메시지 전송 중 오류가 발생했습니다. 권한을 확인해주세요.");
-        }
-    };
+    if (chats === null) return <LoadingSpinner />;
 
-    if (loading) {
-        return <LoadingSpinner />;
-    }
-
-    if (!isAllowed) {
-        return <div className="p-4 text-center text-red-500">이 채팅방에 접근할 권한이 없습니다.</div>;
-    }
-    
     return (
-         <div className="flex flex-col h-full"> 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map(msg => (
-                    <div key={msg.id} className={`flex ${msg.senderId === currentUser.uid ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-xs p-3 rounded-lg ${msg.senderId === currentUser.uid ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
-                            <p>{msg.text}</p>
+        <div className="p-4">
+            <h2 className="text-xl font-bold mb-4">채팅 목록</h2>
+            <div className="space-y-3">
+                {chats.length > 0 ? chats.map(chat => (
+                    <div key={chat.id} onClick={() => navigate(`/chat/${chat.id}`, { state: { recipientId: chat.otherUser.uid, recipientName: chat.otherUser.displayName }})}
+                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-gray-300 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                            {chat.otherUser.photoURL ? <img src={chat.otherUser.photoURL} alt={chat.otherUser.displayName} className="w-full h-full object-cover" /> : <UserCircle size={48} className="text-gray-400"/>}
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <h3 className="font-bold">{chat.otherUser.displayName}</h3>
+                            <p className="text-sm text-gray-500 truncate">{chat.lastMessage?.text || '메시지를 보내보세요.'}</p>
                         </div>
                     </div>
-                ))}
-                <div ref={messagesEndRef} />
-            </div>
-            <div className="bg-white border-t p-3">
-                 <form onSubmit={handleSendMessage} className="relative flex items-center">
-                    <input
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="메시지를 입력하세요."
-                        className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                    />
-                    <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
-                        <Send size={20} />
-                    </button>
-                </form>
+                )) : (
+                    <p className="text-center text-gray-500 py-10">진행중인 대화가 없습니다.</p>
+                )}
             </div>
         </div>
     );
 };
-
 const ClubListPage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
