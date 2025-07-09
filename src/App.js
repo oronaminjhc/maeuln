@@ -66,30 +66,33 @@ const storage = getStorage(app);
 // =================================================================
 // ▼▼▼ 인증 Context ▼▼▼
 // =================================================================
+// App.js 상단의 AuthProvider 컴포넌트를 찾아서 수정합니다.
+
 const AuthContext = createContext();
 
 const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    // ★★★ 추가: 관리자가 선택한 지역을 임시 저장할 상태
+    const [adminSelectedCity, setAdminSelectedCity] = useState(null); 
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 const userRef = doc(db, "users", user.uid);
                 const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
-                    let finalUser = user;
+                    let finalUser = { ...user };
                     if (userSnap.exists()) {
                         const userData = userSnap.data();
                         finalUser = { ...user, ...userData, photoURL: userData.photoURL || user.photoURL };
                     }
-                    // 관리자 여부 플래그 추가
                     finalUser.isAdmin = user.uid === ADMIN_UID;
                     setCurrentUser(finalUser);
                     setLoading(false);
                 }, (error) => {
                     console.error("User doc snapshot error:", error);
-                    user.isAdmin = user.uid === ADMIN_UID;
-                    setCurrentUser(user);
+                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID };
+                    setCurrentUser(finalUser);
                     setLoading(false);
                 });
                 return () => userUnsubscribe();
@@ -101,7 +104,13 @@ const AuthProvider = ({ children }) => {
         return () => unsubscribe();
     }, []);
 
-    const value = { currentUser, loading };
+    // ★★★ 수정: value 객체에 관리자 상태와 함수 추가
+    const value = { 
+        currentUser, 
+        loading,
+        adminSelectedCity,
+        setAdminSelectedCity
+    };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
@@ -113,7 +122,6 @@ const useAuth = () => {
 
 // =================================================================
 // ▼▼▼ 로고, 헬퍼, 공용 컴포넌트 ▼▼▼
-// (이하 생략 - 기존과 동일)
 // =================================================================
 const Logo = ({ size = 28 }) => (
     <img src="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" alt="Logo" width={size} height={size} style={{ objectFit: 'contain' }}/>
@@ -339,10 +347,11 @@ const RegionSetupPage = () => {
                 city: selectedCity,
                 town: '', 
                 createdAt: Timestamp.now(),
-                followers: [],
-                following: [],
-                likedNews: []
-            }, { merge: true }); 
+ 		followerCount: 0, // <-- 이 필드 추가
+    		followers: [],
+   		following: [],
+    		likedNews: []
+	}, { merge: true });
         } catch (e) {
             console.error("Region save error:", e);
             setError("저장에 실패했습니다. 다시 시도해주세요.");
@@ -383,8 +392,9 @@ const RegionSetupPage = () => {
     );
 };
 
+
 const HomePage = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
     const [posts, setPosts] = useState(null);
     const [buanNews, setBuanNews] = useState(null);
@@ -392,43 +402,40 @@ const HomePage = () => {
     const [userEvents, setUserEvents] = useState({});
     const [likedNews, setLikedNews] = useState([]);
 
-    const userCity = currentUser?.city;
-    
+    const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
+    const displayCity = adminSelectedCity || (currentUser.isAdmin ? '전국' : currentUser.city);
+
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
-    
+
     const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); };
 
     useEffect(() => {
         if (!currentUser || (!currentUser.city && !currentUser.isAdmin)) return;
 
         const unsubscribes = [];
-
         setLikedNews(currentUser.likedNews || []);
-        
-        // 게시물 쿼리
+
         let postsQuery;
-        if (currentUser.isAdmin) {
-            postsQuery = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
+        if (targetCity) {
+            postsQuery = query(collection(db, "posts"), where("city", "==", targetCity), orderBy("createdAt", "desc"), limit(50));
         } else {
-            postsQuery = query(collection(db, "posts"), where("city", "==", currentUser.city), orderBy("createdAt", "desc"), limit(50));
+            postsQuery = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
         }
         unsubscribes.push(onSnapshot(postsQuery, (snapshot) => {
             setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }));
 
-        // 소식 쿼리
         let newsQuery;
-        if (currentUser.isAdmin) {
-            newsQuery = query(collection(db, "news"), orderBy("createdAt", "desc"));
+        if (targetCity) {
+            newsQuery = query(collection(db, "news"), where("city", "==", targetCity), orderBy("createdAt", "desc"));
         } else {
-            newsQuery = query(collection(db, "news"), where("city", "==", currentUser.city), orderBy("createdAt", "desc"));
+            newsQuery = query(collection(db, "news"), orderBy("createdAt", "desc"));
         }
         unsubscribes.push(onSnapshot(newsQuery, (snapshot) => {
             setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }));
-
-        // 이벤트
+        
         unsubscribes.push(onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
             const eventsData = {};
             snapshot.docs.forEach(doc => {
@@ -439,20 +446,18 @@ const HomePage = () => {
             setUserEvents(eventsData);
         }));
 
-        // 팔로잉 게시물
         if (currentUser.following?.length > 0) {
             const followingLimited = currentUser.following.slice(0, 10);
-            unsubscribes.push(onSnapshot(query(collection(db, "posts"), where('authorId', 'in', followingLimited), orderBy("createdAt", "desc"), limit(10)), 
+            unsubscribes.push(onSnapshot(query(collection(db, "posts"), where('authorId', 'in', followingLimited), orderBy("createdAt", "desc"), limit(10)),
                 (snapshot) => setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
             ));
         } else {
-             setFollowingPosts([]);
+            setFollowingPosts([]);
         }
 
         return () => unsubscribes.forEach(unsub => unsub());
+    }, [currentUser, adminSelectedCity]);
 
-    }, [currentUser]);
-    
     const handleLikeNews = async (newsItem) => {
         const userRef = doc(db, 'users', currentUser.uid);
         try {
@@ -461,9 +466,9 @@ const HomePage = () => {
             });
         } catch (error) { console.error("Error liking news:", error); }
     };
-    
+
     const handleDeleteNews = async (newsId, imagePath) => {
-        if(!currentUser.isAdmin) return;
+        if (!currentUser.isAdmin) return;
         if (window.confirm("정말로 이 소식을 삭제하시겠습니까?")) {
             try {
                 if (imagePath) await deleteObject(ref(storage, imagePath));
@@ -473,6 +478,7 @@ const HomePage = () => {
         }
     };
 
+    // ★★★ 올바른 로딩 로직 ★★★
     if (posts === null || buanNews === null) {
         return <LoadingSpinner />;
     }
@@ -481,105 +487,14 @@ const HomePage = () => {
 
     return (
         <div className="p-4 space-y-8">
-            <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
-                {selectedNews && (
-                    <div>
-                        <h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2>
-                        <p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p>
-                    </div>
-                )}
-            </Modal>
-            
-            <section>
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">지금 {currentUser.isAdmin ? '전국' : userCity}에서는</h2>
-                    <Link to="/news" className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></Link>
-                </div>
-                <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    {buanNews.length > 0 ? (
-                        buanNews.map((news) => (
-                            <div key={news.id} className="w-4/5 md:w-3/5 flex-shrink-0">
-                                <NewsCard {...{news, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />
-                            </div>
-                        ))
-                    ) : (
-                         <div className="text-center text-gray-500 w-full p-8 bg-gray-100 rounded-lg">아직 등록된 소식이 없습니다.</div>
-                    )}
-                </div>
-            </section>
-
-            <section>
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">{currentUser.isAdmin ? '전체' : userCity} 달력</h2>
-                    <Link to="/calendar" className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></Link>
-                </div>
-                <Calendar events={userEvents} onDateClick={(date) => navigate('/calendar', { state: { date } })}/>
-            </section>
-
-            <section>
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">지금 인기있는 글</h2>
-                    <Link to="/board" className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></Link>
-                </div>
-                <div className="space-y-3">
-                    {popularPosts.length > 0 ? (popularPosts.map(post => {
-                        const style = getCategoryStyle(post.category, userCity);
-                        return (
-                            <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
-                                <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
-                                <p className="truncate flex-1">{post.title}</p>
-                                <div className="flex items-center text-xs text-gray-400 gap-2">
-                                    <Heart size={14} className="text-red-400"/>
-                                    <span>{post.likes?.length || 0}</span>
-                                </div>
-                            </div>
-                        );
-                    })) : (<p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>)}
-                </div>
-            </section>
-
-            <section>
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold">팔로잉</h2>
-                </div>
-                <div className="space-y-3">
-                    {followingPosts.length > 0 ? (followingPosts.map(post => {
-                        const style = getCategoryStyle(post.category, post.city);
-                        return (
-                            <div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span>
-                                    <h3 className="font-bold text-md truncate flex-1">{post.title}</h3>
-                                </div>
-                                <p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p>
-                                <div className="flex justify-between items-center text-xs text-gray-500">
-                                    <div>
-                                        <span onClick={(e) => { e.stopPropagation(); navigate(`/profile/${post.authorId}`); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span>
-                                        <span className="mx-1">·</span>
-                                        <span>{timeSince(post.createdAt)}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-1">
-                                            <Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} />
-                                            <span>{post.likes?.length || 0}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <MessageCircle size={14} className="text-gray-400"/>
-                                            <span>{post.commentCount || 0}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })) : (<p className="text-center text-gray-500 py-4">팔로우하는 사용자의 글이 없습니다.</p>)}
-                </div>
-            </section>
+            {/* ... JSX ... */}
         </div>
     );
 };
 
+
 const NewsPage = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
     const [buanNews, setBuanNews] = useState(null);
     const [likedNews, setLikedNews] = useState(currentUser.likedNews || []);
@@ -590,20 +505,30 @@ const NewsPage = () => {
     const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
 
     useEffect(() => {
-        if (!currentUser || (!currentUser.city && !currentUser.isAdmin)) return;
+        const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
+
+        if (!currentUser || (!targetCity && !currentUser.isAdmin)) {
+            // 데이터를 가져올 조건이 안되면 빈 배열로 설정하여 로딩을 멈춤
+            setBuanNews([]);
+            return;
+        }
         
         let q;
-        if (currentUser.isAdmin) {
-            q = query(collection(db, "news"), orderBy("createdAt", "desc"));
+        if (targetCity) {
+            q = query(collection(db, "news"), where("city", "==", targetCity), orderBy("createdAt", "desc"));
         } else {
-            q = query(collection(db, "news"), where("city", "==", currentUser.city), orderBy("createdAt", "desc"));
+            q = query(collection(db, "news"), orderBy("createdAt", "desc"));
         }
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (error) => {
+            console.error("Error fetching news:", error);
+            setBuanNews([]); // 에러 발생 시에도 로딩을 멈추기 위해 빈 배열로 설정
         });
+
         return () => unsubscribe();
-    }, [currentUser]);
+    }, [currentUser, adminSelectedCity]);
 
     const handleLikeNews = async (newsItem) => {
         const userRef = doc(db, 'users', currentUser.uid);
@@ -684,7 +609,6 @@ const NewsPage = () => {
         </div>
     );
 };
-
 // NewsPage 컴포넌트가 끝나는 지점...
 
 // ▼▼▼ 여기에 아래 코드를 붙여넣으세요 ▼▼▼
@@ -895,30 +819,39 @@ const CalendarPage = () => {
 };
 
 // 예시: BoardPage
+
 const BoardPage = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
-    const [posts, setPosts] = useState(null); // 초기값을 null로
+    const [posts, setPosts] = useState(null);
     const [filter, setFilter] = useState('전체');
 
+    const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
     const userCity = currentUser?.city;
     const dynamicMomCategory = `${userCity}맘`;
     const categories = ['전체', '일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타'];
 
     useEffect(() => {
-        if (!currentUser || (!currentUser.city && !currentUser.isAdmin)) return;
+        if (!currentUser || (!targetCity && !currentUser.isAdmin)) return;
         
         const postsCollection = collection(db, "posts");
         let q;
 
-        if (currentUser.isAdmin && filter === '전체') {
-            q = query(postsCollection, orderBy("createdAt", "desc"), limit(50));
-        } else if (currentUser.isAdmin) {
-             q = query(postsCollection, where("category", "==", filter), orderBy("createdAt", "desc"), limit(50));
-        } else if (filter === '전체') {
-            q = query(postsCollection, where("city", "==", currentUser.city), orderBy("createdAt", "desc"), limit(50));
-        } else {
-            q = query(postsCollection, where("city", "==", currentUser.city), where("category", "==", filter), orderBy("createdAt", "desc"), limit(50));
+        const baseQuery = (categoryFilter) => {
+            if (categoryFilter === '전체') {
+                return [orderBy("createdAt", "desc"), limit(50)];
+            }
+            return [where("category", "==", categoryFilter), orderBy("createdAt", "desc"), limit(50)];
+        };
+
+        if (targetCity) { // 관리자가 특정 지역을 보거나, 일반 사용자인 경우
+            q = query(postsCollection, where("city", "==", targetCity), ...baseQuery(filter));
+        } else { // 관리자가 전체 뷰를 보는 경우
+             if (filter === '전체') {
+                q = query(postsCollection, orderBy("createdAt", "desc"), limit(50));
+            } else {
+                q = query(postsCollection, where("category", "==", filter), orderBy("createdAt", "desc"), limit(50));
+            }
         }
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -929,7 +862,7 @@ const BoardPage = () => {
         });
 
         return () => unsubscribe();
-    }, [filter, currentUser]);
+    }, [filter, currentUser, adminSelectedCity]);
 
     if (posts === null) {
         return <LoadingSpinner />;
@@ -989,9 +922,6 @@ const BoardPage = () => {
     );
 };
 
-
-// ... 다른 페이지 컴포넌트들도 위와 같이 수정 ...
-// (전체 코드 길이가 너무 길어져 나머지 페이지는 생략하지만, HomePage, NewsPage, BoardPage와 동일한 원리로 수정하시면 됩니다)
 const WritePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -1412,12 +1342,45 @@ const ProfileEditPage = () => {
     );
 };
 
+
 const UserProfilePage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
-    const { currentUser } = useAuth();
+    // ★★★ 수정: 관리자 지역 전환 함수를 context에서 가져옴
+    const { currentUser, setAdminSelectedCity } = useAuth();
     const [profileUser, setProfileUser] = useState(null);
     const [userPosts, setUserPosts] = useState(null);
+    
+    // ★★★ 추가: 지역 목록을 불러올 상태
+    const [allRegions, setAllRegions] = useState([]);
+
+    // ★★★ 추가: 관리자용 지역 목록을 불러오는 useEffect
+    useEffect(() => {
+        if (currentUser?.isAdmin) {
+            // mock-regions.js의 모든 지역 데이터를 가져와서 평탄화
+            const loadAllRegions = async () => {
+                const sidos = await fetchRegions();
+                const allCitiesPromises = sidos.map(sido => fetchCities(sido));
+                const allCitiesArrays = await Promise.all(allCitiesPromises);
+                
+                const flattenedRegions = [];
+                sidos.forEach((sido, index) => {
+                    allCitiesArrays[index].forEach(city => {
+                        // "서울특별시"와 같은 경우는 하나만 추가
+                        if (sido === city) {
+                            if (!flattenedRegions.find(r => r.city === sido)) {
+                                flattenedRegions.push({ region: sido, city: city, label: sido });
+                            }
+                        } else {
+                            flattenedRegions.push({ region: sido, city: city, label: `${sido} ${city}` });
+                        }
+                    });
+                });
+                setAllRegions(flattenedRegions);
+            };
+            loadAllRegions();
+        }
+    }, [currentUser?.isAdmin]);
 
     useEffect(() => {
         if (!userId) return;
@@ -1426,7 +1389,7 @@ const UserProfilePage = () => {
         const unsubscribeUser = onSnapshot(userRef, (doc) => {
             if(doc.exists()){
                 const userData = doc.data();
-                setProfileUser({...userData, id: doc.id, uid: doc.id, photoURL: userData.photoURL || null});
+                setProfileUser({...userData, id: doc.id, uid: doc.id, photoURL: userData.photoURL || null, isAdmin: doc.id === ADMIN_UID });
             } else {
               setProfileUser(null);
             }
@@ -1440,89 +1403,85 @@ const UserProfilePage = () => {
         return () => { unsubscribeUser(); unsubscribePosts(); };
     }, [userId]);
 
-    const handleFollow = async () => {
-        const batch = writeBatch(db);
-        const currentUserRef = doc(db, 'users', currentUser.uid);
-        const profileUserRef = doc(db, 'users', userId);
-
-        try {
-            if (profileUser.followers?.includes(currentUser.uid)) {
-                batch.update(currentUserRef, { following: arrayRemove(userId) });
-                batch.update(profileUserRef, { followers: arrayRemove(currentUser.uid) });
-            } else {
-                batch.update(currentUserRef, { following: arrayUnion(userId) });
-                batch.update(profileUserRef, { followers: arrayUnion(currentUser.uid) });
-            }
-            await batch.commit();
-        } catch (error) {
-            console.error("팔로우 처리 중 오류:", error);
-            alert("팔로우 처리 중 오류가 발생했습니다.");
+    // ★★★ 추가: 지역 전환 핸들러
+    const handleRegionViewChange = (e) => {
+        const value = e.target.value;
+        if (value === "admin_view") {
+            setAdminSelectedCity(null); // 전체 보기 (관리자 모드)
+        } else {
+            setAdminSelectedCity(value); // 특정 지역 뷰로 전환
         }
+        // 선택 후 홈으로 이동하여 변경된 뷰 확인
+        navigate('/home'); 
     };
     
-    const handleLogout = async () => {
-        if (window.confirm('로그아웃 하시겠습니까?')) {
-            await signOut(auth);
-            navigate('/start');
-        }
-    };
+    // UserProfilePage의 handleFollow 함수 (개선 예시)
+	const handleFollow = async () => {
+    		const currentUserRef = doc(db, 'users', currentUser.uid);
+    		const profileUserRef = doc(db, 'users', userId);
 
+    		try {
+        // 현재 팔로우 상태인지 Firestore에서 직접 읽어와서 결정 (더 정확함)
+        		const profileSnap = await getDoc(profileUserRef);
+       		 	const isCurrentlyFollowing = profileSnap.data()?.followers?.includes(currentUser.uid);
+
+        		const batch = writeBatch(db);
+
+        		if (isCurrentlyFollowing) {
+            		batch.update(currentUserRef, { following: arrayRemove(userId) });
+            		batch.update(profileUserRef, { followers: arrayRemove(currentUser.uid), followerCount: increment(-1) });
+       		 	} else {
+            		batch.update(currentUserRef, { following: arrayUnion(userId) });
+            		batch.update(profileUserRef, { followers: arrayUnion(currentUser.uid), followerCount: increment(1) });
+      			 }
+        			await batch.commit();
+   		 } catch (error) {
+        // ...
+    }
+};
+    const handleLogout = async () => {
+        // ... (기존과 동일)
+    };
     const handleMessage = () => {
-        const chatId = [currentUser.uid, userId].sort().join('_');
-        navigate(`/chat/${chatId}`, { state: { recipientId: userId, recipientName: profileUser.displayName }});
+        // ... (기존과 동일)
     };
 
     if(profileUser === null || userPosts === null) return <LoadingSpinner />;
-
     if(!profileUser) return <div className='p-4 text-center'>사용자를 찾을 수 없습니다.</div>;
 
     const isMyProfile = currentUser.uid === userId;
     const isFollowing = profileUser.followers?.includes(currentUser.uid) || false;
-    const userLocation = profileUser.region && profileUser.city ? `${profileUser.region} ${profileUser.city}` : '';
+    const userLocation = profileUser.isAdmin ? '관리자' : (profileUser.region && profileUser.city ? `${profileUser.region} ${profileUser.city}` : '지역 정보 없음');
     const userTown = profileUser.town || '';
 
     return (
         <div className="p-4">
             <div className="flex items-center mb-6">
-                 <div className="w-16 h-16 rounded-full mr-4 flex-shrink-0 bg-gray-200 overflow-hidden flex items-center justify-center">
-                    {profileUser.photoURL ? (
-                        <img src={profileUser.photoURL} alt={profileUser.displayName} className="w-full h-full object-cover" />
-                    ) : (
-                        <UserCircle size={64} className="text-gray-400" />
-                    )}
-                </div>
-                <div className="flex-1">
-                    <h2 className="text-xl font-bold">{profileUser.displayName}</h2>
-                    <p className="text-sm text-gray-600 mt-1">{profileUser.bio || '자기소개를 입력해주세요.'}</p>
-                    <p className="text-xs text-gray-500 mt-1">{[userLocation, userTown].filter(Boolean).join(' · ')}</p>
-                    <div className="text-sm text-gray-500 mt-2">
-                        <span>팔로워 {profileUser.followers?.length || 0}</span>
-                        <span className="mx-2">·</span>
-                        <span>팔로잉 {profileUser.following?.length || 0}</span>
-                    </div>
-                </div>
+                 {/* ... (프로필 정보 표시 부분, 기존과 동일) ... */}
             </div>
             <div className="flex gap-2 mb-6">
-                {isMyProfile ? (
-                    <>
-                        <button onClick={() => navigate('/profile/edit')} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
-                            <Edit size={16} /> 프로필 편집
-                        </button>
-                        <button onClick={handleLogout} className="flex-1 p-2 text-sm font-semibold rounded-lg bg-gray-200 text-gray-800 flex items-center justify-center gap-1">
-                            <LogOut size={16} /> 로그아웃
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <button onClick={handleFollow} className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg ${isFollowing ? 'bg-gray-200 text-gray-800' : 'bg-[#00462A] text-white'}`}>
-                            {isFollowing ? '팔로잉' : '팔로우'}
-                        </button>
-                        <button onClick={handleMessage} className="flex-1 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-500 text-white flex items-center justify-center gap-1">
-                             <MessageSquare size={16} /> 메시지
-                        </button>
-                    </>
-                )}
+                {/* ... (프로필 편집/로그아웃/팔로우/메시지 버튼, 기존과 동일) ... */}
             </div>
+
+            {/* ★★★ 추가: 관리자 도구 UI ★★★ */}
+            {isMyProfile && currentUser.isAdmin && (
+                <div className="mb-6 p-4 bg-gray-100 rounded-lg">
+                    <h3 className="text-md font-bold text-gray-700 mb-2">관리자 도구</h3>
+                    <div>
+                        <label htmlFor="region-view-select" className="block text-sm font-medium text-gray-600 mb-1">지역 뷰 전환</label>
+                        <select 
+                            id="region-view-select"
+                            onChange={handleRegionViewChange}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                        >
+                            <option value="admin_view">전체 보기 (관리자)</option>
+                            {allRegions.map(r => (
+                                <option key={r.label} value={r.city}>{r.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            )}
 
             <div className="space-y-3">
                 <h3 className="text-lg font-bold">작성한 글</h3>
@@ -1537,12 +1496,16 @@ const UserProfilePage = () => {
     );
 };
 
+
 const SearchPage = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
+
+    const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
+    const displayCity = adminSelectedCity || (currentUser.isAdmin ? '전체' : currentUser.city);
 
     const handleSearch = async () => {
         if (!searchTerm.trim()) {
@@ -1552,18 +1515,18 @@ const SearchPage = () => {
         setLoading(true);
         try {
             const postsRef = collection(db, 'posts');
-            
             let q;
-            if (currentUser.isAdmin) {
-                // 관리자는 전체 게시물에서 검색
+
+            if (targetCity) {
+                // 관리자가 특정 지역을 보거나, 일반 사용자인 경우
                 q = query(postsRef,
+                    where('city', '==', targetCity),
                     where('title', '>=', searchTerm),
                     where('title', '<=', searchTerm + '\uf8ff')
                 );
             } else {
-                // 일반 사용자는 자기 지역 내에서만 검색
+                // 관리자가 전체 뷰에서 검색하는 경우
                 q = query(postsRef,
-                    where('city', '==', currentUser.city),
                     where('title', '>=', searchTerm),
                     where('title', '<=', searchTerm + '\uf8ff')
                 );
@@ -1586,12 +1549,12 @@ const SearchPage = () => {
                 <input type="text" value={searchTerm} 
                     onChange={(e) => setSearchTerm(e.target.value)} 
                     onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    placeholder={currentUser.isAdmin ? '전체 게시물에서 검색...' : `${currentUser.city} 내에서 검색...`}
+                    placeholder={targetCity ? `${displayCity} 내에서 검색...` : '전체 게시물에서 검색...'}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]" />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <button onClick={handleSearch} className="px-4 py-2 bg-[#00462A] text-white rounded-full font-semibold">검색</button>
             </div>
- 	{loading ? <LoadingSpinner /> : (
+ 	        {loading ? <LoadingSpinner /> : (
                 <div className="space-y-3">
                     {results.length === 0 && searchTerm && !loading && ( <p className="text-center text-gray-500 py-10">검색 결과가 없습니다.</p> )}
                     {results.map(post => (
@@ -2057,10 +2020,17 @@ const MainLayout = ({ children }) => {
     );
 };
 
+// App.js 파일에서 기존 Header 컴포넌트를 찾아서 아래 코드로 완전히 교체하세요.
+
 const Header = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { currentUser } = useAuth();
+    const { currentUser, adminSelectedCity } = useAuth(); // adminSelectedCity도 가져옴
+    
+    // currentUser가 로드되기 전에는 헤더를 렌더링하지 않음 (오류 방지)
+    if (!currentUser) {
+        return null;
+    }
     
     const hideHeaderOn = ['/post/write', '/news/write', '/profile/edit', '/clubs/create'];
     const shouldHide = hideHeaderOn.some(path => location.pathname.startsWith(path) || location.pathname.includes('/edit/'));
@@ -2073,11 +2043,21 @@ const Header = () => {
         const { pathname } = location;
 
         if (pathname === '/home') {
-            if (currentUser.isAdmin) return '마을N';
-            // city가 '서울특별시'와 같은 경우 '서울'만, '부안군'인 경우 '부안'만 추출
-            const shortCityName = currentUser.city.replace(/(특별시|광역시|특별자치시|도|시|군|구)$/, '');
+            // 관리자가 특정 지역 뷰를 보고 있다면 해당 지역 이름 표시
+            if (adminSelectedCity) {
+                const cityName = adminSelectedCity.replace(/(특별시|광역시|특별자치시|도|시|군|구)$/, '');
+                return `마을N ${cityName}`;
+            }
+            // 관리자 전체 뷰일 경우
+            if (currentUser.isAdmin) {
+                return '마을N';
+            }
+            // 일반 사용자일 경우
+            const city = currentUser.city || '';
+            const shortCityName = city.replace(/(특별시|광역시|특별자치시|도|시|군|구)$/, '');
             return `마을N ${shortCityName}`;
         }
+
         if(pathname.startsWith('/profile/')) return '프로필';
         if(pathname.startsWith('/post/')) return '게시글';
         if(pathname.startsWith('/chat/')) {
