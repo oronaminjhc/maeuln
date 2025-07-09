@@ -1,60 +1,23 @@
-// --- START OF FILE App.js ---
 
 import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { initializeApp } from 'firebase/app';
-import {
-    getAuth,
-    onAuthStateChanged,
-    signOut,
-    updateProfile,
-    OAuthProvider,
-    signInWithPopup
-} from 'firebase/auth';
-import {
-    getFirestore,
-    collection,
-    addDoc,
-    query,
-    onSnapshot,
-    doc,
-    setDoc,
-    getDoc,
-    updateDoc,
-    increment,
-    arrayUnion,
-    arrayRemove,
-    Timestamp,
-    where,
-    orderBy,
-    limit,
-    deleteDoc,
-    getDocs,
-    writeBatch
-} from 'firebase/firestore';
-import {
-    getStorage,
-    ref,
-    uploadBytes,
-    getDownloadURL,
-    deleteObject
-} from 'firebase/storage';
+import { getAuth, onAuthStateChanged, signOut, updateProfile, OAuthProvider, signInWithPopup } from 'firebase/auth';
+import { getFirestore, collection, addDoc, query, onSnapshot, doc, setDoc, getDoc, updateDoc, increment, arrayUnion, arrayRemove, Timestamp, where, orderBy, limit, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, MessageCircle, Send, PlusCircle, ChevronLeft, ChevronRight, X, Search, Bell, Star, Pencil, LogOut, Edit, MessageSquare, Trash2, ImageUp, UserCircle, Lock, Edit2 } from 'lucide-react';
 
-// 서비스 로직 import
 import { fetchRegions, fetchCities } from './services/region.service';
 
-// 관리자 UID 지정
 const ADMIN_UID = 'mPEyGZqS1ZQmw381AYKi1Kd6epH2';
 
-// Firebase 설정
 const firebaseConfig = {
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
     authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
     projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
     storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_APP_ID,
     measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
@@ -66,11 +29,7 @@ const storage = getStorage(app);
 // =================================================================
 // ▼▼▼ 인증 Context ▼▼▼
 // =================================================================
-// App.js 상단의 AuthProvider 컴포넌트를 찾아서 수정합니다.
-
 const AuthContext = createContext();
-
-// App.js에서 AuthProvider를 이 코드로 교체하세요.
 
 const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
@@ -84,7 +43,6 @@ const AuthProvider = ({ children }) => {
                 const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
                     let finalUser = { ...user };
 
-                    // ★★★ photoURL을 https로 변환하는 로직 ★★★
                     if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
                         finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
                     }
@@ -140,7 +98,79 @@ const categoryStyles = {
     '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' },
     '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' },
     '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' },
-    '마을맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
+    '마을_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+// =================================================================
+// ▼▼▼ 인증 Context ▼▼▼
+// =================================================================
+const AuthContext = createContext();
+
+const AuthProvider = ({ children }) => {
+    const [currentUser, setCurrentUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [adminSelectedCity, setAdminSelectedCity] = useState(null);
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const userRef = doc(db, "users", user.uid);
+                const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
+                    let finalUser = { ...user };
+                    if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
+                        finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
+                    }
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        let firestorePhotoURL = userData.photoURL || finalUser.photoURL;
+                        if (firestorePhotoURL && firestorePhotoURL.startsWith('http://')) {
+                            firestorePhotoURL = firestorePhotoURL.replace('http://', 'https://');
+                        }
+                        finalUser = { ...user, ...userData, photoURL: firestorePhotoURL, isFirestoreDataLoaded: true };
+                    } else {
+                        finalUser.isFirestoreDataLoaded = true;
+                    }
+                    finalUser.isAdmin = user.uid === ADMIN_UID;
+                    setCurrentUser(finalUser);
+                    setLoading(false);
+                }, (error) => {
+                    console.error("User doc snapshot error:", error);
+                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
+                    setCurrentUser(finalUser);
+                    setLoading(false);
+                });
+                return () => userUnsubscribe();
+            } else {
+                setCurrentUser(null);
+                setLoading(false);
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const value = { currentUser, loading, adminSelectedCity, setAdminSelectedCity };
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+const useAuth = () => {
+    return useContext(AuthContext);
+};
+
+// =================================================================
+// ▼▼▼ 공용 컴포넌트 ▼▼▼
+// =================================================================
+const Logo = ({ size = 28 }) => ( <img src="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" alt="Logo" width={size} height={size} style={{ objectFit: 'contain' }}/> );
+const categoryStyles = { '일상': { text: 'text-purple-600', bg: 'bg-purple-100', bgStrong: 'bg-purple-500' }, '친목': { text: 'text-pink-600', bg: 'bg-pink-100', bgStrong: 'bg-pink-500' }, '10대': { text: 'text-cyan-600', bg: 'bg-cyan-100', bgStrong: 'bg-cyan-500' }, '청년': { text: 'text-indigo-600', bg: 'bg-indigo-100', bgStrong: 'bg-indigo-500' }, '중년': { text: 'text-yellow-600', bg: 'bg-yellow-100', bgStrong: 'bg-yellow-500' }, '마을맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' }, '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' }, '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' } };
+const getCategoryStyle = (category, city = '') => { const dynamicCategoryName = `${city}맘`; if (category === dynamicCategoryName) { return categoryStyles['마을맘']; } return categoryStyles[category] || categoryStyles['기타']; };
+const timeSince = (date) => { if (!date || typeof date.toDate !== 'function') return ''; const jsDate = date.toDate(); const seconds = Math.floor((new Date() - jsDate) / 1000); if (seconds < 60) return `방금 전`; const minutes = Math.floor(seconds / 60); if (minutes < 60) return `${minutes}분 전`; const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours}시간 전`; const days = Math.floor(hours / 24); if (days < 7) return `${days}일 전`; return jsDate.toLocaleDateString('ko-KR'); };
+const Modal = ({ isOpen, onClose, children }) => { if (!isOpen) return null; return ( <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4"> <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"> <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10"> <div className="w-6"></div> <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button> </div> <div className="p-6">{children}</div> </div> </div> );맘': { text: 'text-teal-600', bg: 'bg-teal-100', bgStrong: 'bg-teal-500' },
     '질문': { text: 'text-blue-600', bg: 'bg-blue-100', bgStrong: 'bg-blue-500' },
     '기타': { text: 'text-gray-600', bg: 'bg-gray-100', bgStrong: 'bg-gray-500' }
 };
@@ -188,80 +218,71 @@ const LoadingSpinner = () => (
     </div>
 );
 
-const NewsCard = ({ news, isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked }) => {
-    const navigate = useNavigate();
+const PwaInstallModal = ({ isOpen, onClose }) => {
+    const [isIOS, setIsIOS] = useState(false);
+
+    useEffect(() => {
+        const userAgent = window.navigator.userAgent.toLowerCase();
+        setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+    }, []);
+
+    if (!isOpen) return null;
+
+    const ShareIosIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block w-5 h-5 mx-1 align-middle"><path d="M12 22V8"/><path d="m7 13 5-5 5 5"/><path d="M20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5"/></svg>
+    );
+    const PlusSquareIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block w-5 h-5 mx-1 align-middle"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+    );
+    const MoreVerticalIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block w-5 h-5 mx-1 align-middle"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+    );
+
+    const iosInstructions = (
+        <div className="text-center">
+            <p className="text-lg font-semibold mb-4">iOS에서는 아래의</p>
+            <p className="mb-4">공유 버튼 <ShareIosIcon /> 을 누른 후</p>
+            <p className="mb-6">'홈 화면에 추가' <PlusSquareIcon /> 를 선택해주세요.</p>
+        </div>
+    );
+
+    const androidInstructions = (
+        <div className="text-center">
+            <p className="text-lg font-semibold mb-4">Android에서는</p>
+            <p className="mb-4">오른쪽 상단 메뉴 <MoreVerticalIcon /> 를 누른 후</p>
+            <p className="mb-6">'홈 화면에 추가' 또는 '앱 설치'를 선택해주세요.</p>
+        </div>
+    );
+
     return (
-        <div className="flex-shrink-0 w-full rounded-xl shadow-lg overflow-hidden group bg-gray-200 flex flex-col relative">
-            {news.imageUrl && <img src={news.imageUrl} alt={news.title} className="w-full h-48 object-cover" onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/eeeeee/333333?text=Image' }} />}
-            {isAdmin && (
-                <div className="absolute top-2 left-2 flex gap-2 z-10">
-                    <button onClick={(e) => { e.stopPropagation(); navigate(`/news/edit/${news.id}`, { state: { itemToEdit: news } }); }} className="bg-white/70 p-1.5 rounded-full text-blue-600 shadow"><Pencil size={20} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteNews(news.id, news.imagePath); }} className="bg-white/70 p-1.5 rounded-full text-red-600 shadow"><Trash2 size={20} /></button>
-                </div>
-            )}
-             <button onClick={(e) => { e.stopPropagation(); handleLikeNews(news); }} className="absolute top-2 right-2 bg-white/70 p-1.5 rounded-full">
-                <Heart size={20} className={isLiked ? "text-red-500 fill-current" : "text-gray-500"} />
-            </button>
-            <div className="p-3 bg-white flex-grow"><h3 className="font-bold truncate">{news.title}</h3></div>
-            <div className="grid grid-cols-2 gap-px bg-gray-200">
-                <button onClick={() => openDetailModal(news)} className="bg-white py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">자세히 보기</button>
-                {news.applyUrl ? (
-                    <a href={news.applyUrl} target="_blank" rel="noopener noreferrer" className="bg-white py-2 text-sm font-semibold text-center text-blue-600 hover:bg-blue-50 flex items-center justify-center">
-                        신청하기
-                    </a>
-                ) : (
-                    <button className="bg-white py-2 text-sm font-semibold text-gray-400 cursor-not-allowed" disabled>신청하기</button>
-                )}
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 relative">
+                <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700">
+                    <X size={24} />
+                </button>
+                {isIOS ? iosInstructions : androidInstructions}
+                <button 
+                    onClick={onClose} 
+                    className="w-full mt-4 text-center text-blue-600 font-semibold py-2"
+                >
+                    닫기
+                </button>
             </div>
         </div>
     );
 };
-
-const Calendar = ({events = {}, onDateClick = () => {}}) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1).getDay();
-    const lastDateOfMonth = new Date(year, month + 1, 0).getDate();
-    const dates = [];
-    for (let i = 0; i < firstDayOfMonth; i++) dates.push(<div key={`empty-${i}`} className="p-2"></div>);
-    for (let i = 1; i <= lastDateOfMonth; i++) {
-        const d = new Date(year, month, i);
-        const isToday = d.toDateString() === new Date().toDateString();
-        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-        const hasEvent = events[dateString] && events[dateString].length > 0;
-        dates.push(
-            <div key={i} className="relative py-1 text-center text-sm cursor-pointer" onClick={() => onDateClick(dateString)}>
-                <span className={`w-7 h-7 flex items-center justify-center rounded-full mx-auto ${isToday ? 'bg-[#00462A] text-white font-bold' : ''} ${d.getDay() === 0 ? 'text-red-500' : ''} ${d.getDay() === 6 ? 'text-blue-500' : ''}`}>{i}</span>
-                {hasEvent && <div className={`absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500`}></div>}
-            </div>
-        );
-    }
-    const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-    const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-    return (
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex justify-between items-center mb-4">
-                <button onClick={prevMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronLeft size={20} /></button>
-                <h3 className="text-md font-bold">{`${year}년 ${month + 1}월`}</h3>
-                <button onClick={nextMonth} className="p-1 rounded-full hover:bg-gray-100"><ChevronRight size={20} /></button>
-            </div>
-            <div className="grid grid-cols-7 text-center text-sm">{daysOfWeek.map((day, i) => (<div key={day} className={`font-bold mb-2 ${i === 0 ? 'text-red-500' : ''} ${i === 6 ? 'text-blue-500' : ''}`}>{day}</div>))}{dates}</div>
-        </div>
-    );
-};
-
 
 // =================================================================
 // ▼▼▼ 페이지 컴포넌트들 ▼▼▼
 // =================================================================
 
+const StartPage = () => {
 // App.js 파일에서 기존 StartPage 컴포넌트를 이 코드로 완전히 교체하세요.
 
 const StartPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const handleKakaoLogin = async () => {
         setLoading(true);
@@ -273,7 +294,7 @@ const StartPage = () => {
         } catch (error) {
             console.error("Kakao Login Error:", error);
             if (error.code !== 'auth/popup-closed-by-user') {
-                 setError("카카오톡 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.");
+                 setError("카카오 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.");
             }
         } finally {
             setLoading(false);
@@ -281,21 +302,42 @@ const StartPage = () => {
     };
 
     return (
-        <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4">
-            {/* ★★★ 이 부분이 수정되었습니다 ★★★ */}
-            <div className="text-center mb-8 flex flex-col items-center">
-                <Logo size={80} />
-                <h1 className="text-3xl font-bold text-gray-800 mt-4">마을N</h1>
-                <p className="text-gray-600 mt-2 text-center">전국 모든 지역. 우리 마을 이야기<br/>'마을N'에서 확인하세요!</p>
+        <>
+            <Helmet>
+                <title>마을N - 우리 동네 SNS, 대한민국 지역기반 커뮤니티</title>
+                <meta name="description" content="우리 동네의 새로운 소식과 정보를 마을N에서 확인하세요! 마을N은 주민들이 함께 만들고 소통하는 한국형 지역기반 소셜 네트워크 서비스입니다." />
+                <meta property="og:type" content="website" />
+                <meta property="og:title" content="마을N - 우리 동네 SNS" />
+                <meta property="og:description" content="주민들이 함께 만들고 소통하는 지역기반 커뮤니티, 마을N에서 우리 동네의 새로운 소식을 확인하세요!" />
+                <meta property="og:url" content="https://www.maeuln.net/" />
+                <meta property="og:image" content="https://lh3.googleusercontent.com/d/1gkkNelRAltEEfKv9V4aOScws7MS28IUn" />
+            </Helmet>
+            
+            <PwaInstallModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+            <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4">
+                <div className="text-center mb-8 flex flex-col items-center">
+                    <Logo size={80} />
+                    <h1 className="text-3xl font-bold text-gray-800 mt-4">마을N</h1>
+                    <p className="text-gray-600 mt-2 text-center">전국 모든 마을의 이야기<br/>'마을N'에서 확인하세요!</p>
+                </div>
+                <div className="w-full max-w-xs">
+                    {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
+                    <button onClick={handleKakaoLogin} disabled={loading} className="w-full bg-[#FEE500] text-[#3C1E1E] font-bold py-3 px-4 rounded-lg flex items-center justify-center shadow-lg hover:bg-yellow-400 transition-colors disabled:bg-gray-400">
+                        <svg className="w-6 h-6 mr-2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c.89 0 1.75-.12 2.56-.34l-1.39 4.34c-.08.24.16.45.4.39l4.9-3.06c1.8-1.48 2.53-3.88 2.53-6.33C22 6.48 17.52 2 12 2z" fill="#3C1E1E"/></svg>
+                        {loading ? "로그인 중..." : "카카오로 3초만에 시작하기"}
+                    </button>
+                    <div className="mt-6 text-center">
+                        <button 
+                            onClick={() => setIsModalOpen(true)} 
+                            className="text-sm text-gray-600 hover:text-gray-900 font-semibold underline"
+                        >
+                            마을N 앱 다운받기
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div className="w-full max-w-xs">
-                {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
-                <button onClick={handleKakaoLogin} disabled={loading} className="w-full bg-[#FEE500] text-[#3C1E1E] font-bold py-3 px-4 rounded-lg flex items-center justify-center shadow-lg hover:bg-yellow-400 transition-colors disabled:bg-gray-400">
-                    <svg className="w-6 h-6 mr-2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c.89 0 1.75-.12 2.56-.34l-1.39 4.34c-.08.24.16.45.4.39l4.9-3.06c1.8-1.48 2.53-3.88 2.53-6.33C22 6.48 17.52 2 12 2z" fill="#3C1E1E"/></svg>
-                    {loading ? "로그인 중..." : "카카오톡 간편 로그인"}
-                </button>
-            </div>
-        </div>
+        </>
     );
 };
 
@@ -340,39 +382,34 @@ const RegionSetupPage = () => {
         }
     }, [selectedRegion]);
 
-// RegionSetupPage 컴포넌트의 handleSaveRegion 함수를 수정합니다.
-
-const handleSaveRegion = async () => {
-    if (!selectedRegion || !selectedCity) {
-        setError('거주 지역을 모두 선택해주세요.');
-        return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-        const userRef = doc(db, "users", currentUser.uid);
-        await setDoc(userRef, {
-            displayName: currentUser.displayName,
-            email: currentUser.email,
-            photoURL: currentUser.photoURL,
-            region: selectedRegion,
-            city: selectedCity,
-            town: '', 
-            createdAt: Timestamp.now(),
-            followers: [],
-            following: [],
-            likedNews: []
-        }, { merge: true }); 
-        
-        // ★★★ 이 부분을 명시적으로 추가해도 좋지만,
-        // 위에서 수정한 ProtectedRoute가 이 역할을 이미 잘 수행할 것입니다.
-        // navigate('/home'); 
-        // 하지만 만약을 위해 추가해두면 더 확실합니다.
-        
-    } catch (e) {
-        // ...
-    }
-};
+    const handleSaveRegion = async () => {
+        if (!selectedRegion || !selectedCity) {
+            setError('거주 지역을 모두 선택해주세요.');
+            return;
+        }
+        setLoading(true);
+        setError('');
+        try {
+            const userRef = doc(db, "users", currentUser.uid);
+            await setDoc(userRef, {
+                displayName: currentUser.displayName,
+                email: currentUser.email,
+                photoURL: currentUser.photoURL,
+                region: selectedRegion,
+                city: selectedCity,
+                town: '', 
+                createdAt: Timestamp.now(),
+                followerCount: 0,
+                followers: [],
+                following: [],
+                likedNews: []
+            }, { merge: true }); 
+        } catch (e) {
+            console.error("Region save error:", e);
+            setError("저장에 실패했습니다. 다시 시도해주세요.");
+            setLoading(false);
+        }
+    };
 
     const isCityDropdownDisabled = !selectedRegion || apiLoading || cities.length === 1;
 
@@ -410,6 +447,8 @@ const handleSaveRegion = async () => {
 
 // App.js 파일에서 기존 HomePage 컴포넌트를 찾아서 아래 코드로 완전히 교체하세요.
 
+// App.js 파일에서 기존 HomePage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const HomePage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
@@ -432,6 +471,13 @@ const HomePage = () => {
         if (!currentUser.isAdmin && !currentUser.city) return;
 
         const currentTargetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
+        
+        // 관리자가 아닌데 볼 지역이 없으면 로딩 상태로 둠
+        if (!currentUser.isAdmin && !currentTargetCity) {
+            setPosts([]);
+            setBuanNews([]);
+            return;
+        }
 
         const unsubscribes = [];
         setLikedNews(currentUser.likedNews || []);
@@ -1523,6 +1569,8 @@ const ProfileEditPage = () => {
 
 // App.js 파일에서 기존 UserProfilePage 컴포넌트를 이 코드로 완전히 교체하세요.
 
+// App.js 파일에서 기존 UserProfilePage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const UserProfilePage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
@@ -1590,7 +1638,7 @@ const UserProfilePage = () => {
         setAdminSelectedCity(value === "admin_view" ? null : value);
         navigate('/home'); 
     };
-
+    
     const handleFollow = async () => {
         if (!currentUser || !profileUser) return;
         const currentUserRef = doc(db, 'users', currentUser.uid);
@@ -1665,7 +1713,6 @@ const UserProfilePage = () => {
                     </>
                 ) : (
                     <>
-                        {/* ★★★ 디자인 요구사항이 반영된 버튼 UI ★★★ */}
                         <button 
                             onClick={handleFollow} 
                             className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
@@ -1871,116 +1918,149 @@ const ChatListPage = () => {
 
 // App.js 파일에서 ChatListPage 컴포넌트가 끝나는 지점 다음에 이 코드를 붙여넣으세요.
 
+// App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const ChatPage = () => {
-  const { currentUser } = useAuth();
-  const { chatId } = useParams();
-  const location = useLocation();
-  const { recipientId } = location.state || {};
+    const { currentUser } = useAuth();
+    const { chatId } = useParams();
+    const location = useLocation();
+    
+    const recipientId = location.state?.recipientId;
 
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const messagesEndRef = useRef(null);
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const [isAllowed, setIsAllowed] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const messagesEndRef = useRef(null);
+    
+    useEffect(() => {
+        if (!chatId || !currentUser) return;
 
-  useEffect(() => {
-    const fetchAndListen = async () => {
-      try {
-        const chatRef = doc(db, 'chats', chatId);
-        const chatSnap = await getDoc(chatRef);
+        let unsubscribe = () => {};
+        let messagesUnsubscribe = () => {};
 
-        if (!chatSnap.exists()) return;
+        const checkPermissionAndFetchMessages = async () => {
+            const chatRef = doc(db, 'chats', chatId);
+            
+            try {
+                unsubscribe = onSnapshot(chatRef, (chatSnap) => {
+                    if (chatSnap.exists()) {
+                        const data = chatSnap.data();
+                        if (data.members?.includes(currentUser.uid)) {
+                            setIsAllowed(true);
+                            const messagesRef = collection(chatRef, 'messages');
+                            const q = query(messagesRef, orderBy('createdAt', 'asc'));
+                            
+                            messagesUnsubscribe = onSnapshot(q, (snapshot) => {
+                                setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                            });
+                        } else {
+                            console.warn("접근 권한이 없습니다.");
+                            setIsAllowed(false);
+                        }
+                    } else {
+                        console.warn("채팅방이 존재하지 않지만, 첫 메시지 전송 시 생성됩니다.");
+                        setIsAllowed(true); 
+                    }
+                    setLoading(false);
+                }, (error) => {
+                    console.error("Error listening to chat document:", error);
+                    setIsAllowed(false);
+                    setLoading(false);
+                });
+            } catch (error) {
+                console.error("Error setting up chat listener:", error);
+                setLoading(false);
+            }
+        };
 
-        const data = chatSnap.data();
-        if (!data.members?.includes(currentUser.uid)) return;
+        checkPermissionAndFetchMessages();
 
-        const messagesRef = collection(chatRef, 'messages');
-        const q = query(messagesRef, orderBy('createdAt', 'asc'));
+        return () => {
+            if (typeof unsubscribe === 'function') unsubscribe();
+            if (typeof messagesUnsubscribe === 'function') messagesUnsubscribe();
+        };
+    }, [chatId, currentUser]);
+    
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-          setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-
-        return unsubscribe;
-      } catch (error) {
-        console.error("Error listening to messages:", error);
-      }
-    };
-
-    fetchAndListen();
-  }, [chatId, currentUser.uid]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !recipientId) return;
-
-    const chatRef = doc(db, 'chats', chatId);
-    const messageData = {
-      text: newMessage,
-      senderId: currentUser.uid,
-      createdAt: Timestamp.now(),
-    };
-
-    try {
-      const chatSnap = await getDoc(chatRef);
-
-      if (!chatSnap.exists()) {
-        await setDoc(chatRef, {
-          members: [currentUser.uid, recipientId],
-          createdAt: Timestamp.now(),
-          lastMessage: messageData,
-        });
-      } else {
-        const data = chatSnap.data();
-        if (!data.members?.includes(currentUser.uid)) {
-          await setDoc(chatRef, {
-            members: [...data.members, currentUser.uid],
-          }, { merge: true });
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        
+        if (!newMessage.trim() || !recipientId) {
+            if (!recipientId) console.error("Recipient ID is missing.");
+            return;
         }
 
-        await setDoc(chatRef, { lastMessage: messageData }, { merge: true });
-      }
+        const messageData = {
+            text: newMessage,
+            senderId: currentUser.uid,
+            createdAt: Timestamp.now(),
+        };
+        
+        try {
+            const chatRef = doc(db, 'chats', chatId);
+            const chatSnap = await getDoc(chatRef);
+            const batch = writeBatch(db);
 
-      const newMessageRef = doc(collection(chatRef, 'messages'));
-      await setDoc(newMessageRef, messageData);
+            if (!chatSnap.exists()) {
+                batch.set(chatRef, {
+                    members: [currentUser.uid, recipientId],
+                    lastMessage: messageData,
+                });
+            } else {
+                batch.update(chatRef, { lastMessage: messageData });
+            }
+            
+            const newMessageRef = doc(collection(chatRef, 'messages'));
+            batch.set(newMessageRef, messageData);
 
-      setNewMessage('');
-    } catch (error) {
-      console.error("Error sending message:", error);
-      alert("메시지 전송 중 오류가 발생했습니다.");
+            await batch.commit();
+            setNewMessage('');
+        } catch (error) {
+            console.error("Error sending message:", error);
+            alert("메시지 전송 중 오류가 발생했습니다. 권한을 확인해주세요.");
+        }
+    };
+
+    if (loading) {
+        return <LoadingSpinner />;
     }
-  };
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.senderId === currentUser.uid ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-xs p-3 rounded-lg ${msg.senderId === currentUser.uid ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
-              <p>{msg.text}</p>
+    if (!isAllowed) {
+        return <div className="p-4 text-center text-red-500">이 채팅방에 접근할 권한이 없습니다.</div>;
+    }
+    
+    return (
+         <div className="flex flex-col h-full"> 
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.senderId === currentUser.uid ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-xs p-3 rounded-lg ${msg.senderId === currentUser.uid ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
+                            <p>{msg.text}</p>
+                        </div>
+                    </div>
+                ))}
+                <div ref={messagesEndRef} />
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      <div className="bg-white border-t p-3">
-        <form onSubmit={handleSendMessage} className="relative flex items-center">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="메시지를 입력하세요."
-            className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-          />
-          <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
-            <Send size={20} />
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+            <div className="bg-white border-t p-3">
+                 <form onSubmit={handleSendMessage} className="relative flex items-center">
+                    <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="메시지를 입력하세요."
+                        className="w-full pl-4 pr-12 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                    />
+                    <button type="submit" className="absolute right-2 p-2 rounded-full text-gray-500 hover:bg-gray-200">
+                        <Send size={20} />
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
 };
 
 const ClubListPage = () => {
