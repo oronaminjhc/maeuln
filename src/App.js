@@ -685,9 +685,217 @@ const NewsPage = () => {
     );
 };
 
-// ... 이하 다른 페이지 컴포넌트들도 유사한 방식으로 loading 상태 관리 추가 ...
-// WritePage, PostDetailPage, ProfileEditPage, UserProfilePage, SearchPage 등
-// 각 컴포넌트의 데이터 로딩 useEffect와 return 문 사이에 아래와 같은 로직을 추가합니다.
+// NewsPage 컴포넌트가 끝나는 지점...
+};
+
+// ▼▼▼ 여기에 아래 코드를 붙여넣으세요 ▼▼▼
+const NewsWritePage = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const itemToEdit = location.state?.itemToEdit;
+
+    const { currentUser } = useAuth();
+    const [title, setTitle] = useState(itemToEdit?.title || '');
+    const [content, setContent] = useState(itemToEdit?.content || '');
+    const [tags, setTags] = useState(itemToEdit?.tags?.join(', ') || '');
+    const [applyUrl, setApplyUrl] = useState(itemToEdit?.applyUrl || '');
+    const [date, setDate] = useState(itemToEdit?.date || '');
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        return () => {
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
+        };
+    }, [imagePreview]);
+
+    const handleImageChange = (e) => {
+        if (e.target.files[0]) {
+            const file = e.target.files[0];
+            if (imagePreview && imagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(imagePreview);
+            }
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (!title.trim() || !content.trim() || !date) {
+            alert('날짜, 제목, 내용을 모두 입력해주세요.');
+            return;
+        }
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+
+        try {
+            let imageUrl = itemToEdit?.imageUrl || null;
+            let imagePath = itemToEdit?.imagePath || null;
+            if (imageFile) {
+                if (itemToEdit?.imagePath) {
+                    await deleteObject(ref(storage, itemToEdit.imagePath)).catch(err => console.error("기존 이미지 삭제 실패:", err));
+                }
+                const newImagePath = `news_images/${Date.now()}_${imageFile.name}`;
+                const storageRef = ref(storage, newImagePath);
+                await uploadBytes(storageRef, imageFile);
+                imageUrl = await getDownloadURL(storageRef);
+                imagePath = newImagePath;
+            }
+
+            const finalData = {
+                title,
+                content,
+                imageUrl,
+                imagePath,
+                date,
+                updatedAt: Timestamp.now(),
+                tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+                applyUrl,
+                region: currentUser.region,
+                city: currentUser.city,
+            };
+
+            if (itemToEdit) {
+                await updateDoc(doc(db, 'news', itemToEdit.id), finalData);
+            } else {
+                finalData.createdAt = Timestamp.now();
+                finalData.authorId = currentUser.uid;
+                await addDoc(collection(db, 'news'), finalData);
+            }
+            navigate('/news');
+        } catch (error) {
+            alert(`오류가 발생했습니다: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
+    return (
+        <div>
+            <div className="p-4 flex items-center border-b">
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button>
+                <h2 className="text-lg font-bold mx-auto">{pageTitle}</h2>
+                <button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">
+                    {isSubmitting ? '등록 중...' : '완료'}
+                </button>
+            </div>
+            <div className="p-4 space-y-4">
+                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} placeholder="이벤트 날짜" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" required />
+                <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
+                <input type="url" value={applyUrl} onChange={(e) => setApplyUrl(e.target.value)} placeholder="신청하기 URL 링크 (선택 사항)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
+                <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
+                <div className="border-t pt-4">
+                    <label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
+                    <input id="image-upload-news" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    {imagePreview && (
+                        <div className="mt-4 relative w-32 h-32">
+                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+                            <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// NewsWritePage 컴포넌트가 끝나는 지점...
+};
+
+// ▼▼▼ 여기에 아래 코드를 붙여넣으세요 ▼▼▼
+const CalendarPage = () => {
+    const { currentUser } = useAuth();
+    const location = useLocation();
+    const [userEvents, setUserEvents] = useState({});
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [eventTitle, setEventTitle] = useState('');
+
+    useEffect(() => {
+      const unsub = onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
+          const eventsData = {};
+          snapshot.docs.forEach(doc => {
+              const event = { id: doc.id, ...doc.data() };
+              if (!eventsData[event.date]) eventsData[event.date] = [];
+              eventsData[event.date].push(event);
+          });
+          setUserEvents(eventsData);
+      });
+      return () => unsub();
+    }, [currentUser.uid]);
+
+    useEffect(() => {
+        if(location.state?.date) {
+            setSelectedDate(location.state.date);
+            setIsModalOpen(true);
+        }
+    }, [location.state]);
+
+    const handleDateClick = (date) => {
+        setSelectedDate(date);
+        setIsModalOpen(true);
+    };
+
+    const handleAddEvent = async () => {
+        if (!eventTitle.trim()) {
+            alert("일정 제목을 입력해주세요.");
+            return;
+        }
+        try {
+            await addDoc(collection(db, 'users', currentUser.uid, 'events'), {
+                title: eventTitle,
+                date: selectedDate,
+                createdAt: Timestamp.now(),
+                type: 'user'
+            });
+            setIsModalOpen(false);
+            setEventTitle('');
+        } catch(error) {
+            console.error("Error adding event: ", error);
+            alert("일정 추가 중 오류가 발생했습니다.");
+        }
+    };
+    
+    const eventsForSelectedDate = selectedDate && userEvents[selectedDate] ? userEvents[selectedDate] : [];
+
+    return (
+        <div className="p-4">
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
+                <div className="p-2">
+                    <h3 className="text-lg font-bold mb-4">{selectedDate}</h3>
+                    <div className="mb-4">
+                        <input
+                            type="text"
+                            value={eventTitle}
+                            onChange={(e) => setEventTitle(e.target.value)}
+                            placeholder="새로운 일정"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#00462A] focus:border-[#00462A]"
+                        />
+                    </div>
+                    <button onClick={handleAddEvent} className="w-full bg-[#00462A] text-white font-bold py-2 px-4 rounded-lg hover:bg-[#003a22]">
+                        저장
+                    </button>
+                    <div className="mt-6">
+                        <h4 className="font-bold mb-2">이 날의 일정:</h4>
+                        {eventsForSelectedDate.length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                                {eventsForSelectedDate.map(event => <li key={event.id}>{event.title}</li>)}
+                            </ul>
+                        ) : (
+                            <p className="text-gray-500">등록된 일정이 없습니다.</p>
+                        )}
+                    </div>
+                </div>
+            </Modal>
+            <Calendar events={userEvents} onDateClick={handleDateClick} />
+        </div>
+    );
+};
 
 // 예시: BoardPage
 const BoardPage = () => {
