@@ -407,7 +407,7 @@ const RegionSetupPage = () => {
                         disabled={isCityDropdownDisabled}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200"
                     >
-                        <option value="">시/군/구 선택</option>
+                        <option value="">시/군 선택</option>
                         {apiLoading && selectedRegion ? <option>불러오는 중...</option> : cities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     {error && <p className="text-red-500 text-sm text-center">{error}</p>}
