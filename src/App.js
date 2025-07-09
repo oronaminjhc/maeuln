@@ -2270,35 +2270,53 @@ const ProtectedRoute = ({ children }) => {
     const { currentUser, loading } = useAuth();
     const location = useLocation();
 
-    if (loading) {
-        return <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center"><LoadingSpinner /></div>;
+    // 1. 인증 정보를 확인하거나, Firestore에서 프로필 정보를 불러오는 중이면 로딩 화면을 보여줍니다.
+    // currentUser.isFirestoreDataLoaded 체크가 핵심입니다!
+    if (loading || (currentUser && !currentUser.isFirestoreDataLoaded)) {
+        return (
+            <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
+                <LoadingSpinner />
+            </div>
+        );
     }
 
-    // 로그인 O, 지역설정 O -> /start, /region-setup 접근 시 /home으로
-    if (currentUser && currentUser.city) {
+    // --- 여기부터는 로딩이 끝난 후의 로직입니다 ---
+
+    // 2. 로그인하지 않은 사용자 처리
+    if (!currentUser) {
+        // /start 페이지만 허용하고, 다른 곳으로 가려고 하면 /start로 보냅니다.
+        return location.pathname === '/start' ? children : <Navigate to="/start" replace />;
+    }
+
+    // 3. 관리자 사용자 처리
+    if (currentUser.isAdmin) {
+        // 관리자가 실수로 설정 페이지로 가면 /home으로 보냅니다.
         if (location.pathname === '/start' || location.pathname === '/region-setup') {
             return <Navigate to="/home" replace />;
         }
+        // 그 외 모든 페이지는 접근 가능합니다.
+        return children;
     }
 
-    // 로그인 O, 지역설정 X -> /region-setup 아닌 곳 접근 시 /region-setup으로
-    if (currentUser && !currentUser.city && !currentUser.isAdmin) {
-        if (location.pathname !== '/region-setup') {
-            return <Navigate to="/region-setup" replace />;
-        }
-    }
-    
-    // 로그인 X -> /start, /region-setup 아닌 곳 접근 시 /start로
-    if (!currentUser) {
-        if (location.pathname !== '/start' && location.pathname !== '/region-setup') {
-            return <Navigate to="/start" replace />;
-        }
+    // 4. 지역 설정이 필요한 일반 사용자 처리
+    if (!currentUser.city) {
+        // /region-setup 페이지만 허용하고, 다른 곳으로 가려고 하면 /region-setup으로 보냅니다.
+        return location.pathname === '/region-setup' ? children : <Navigate to="/region-setup" replace />;
     }
 
-    // 그 외 모든 경우는 허용
-    return children;
+    // 5. 모든 설정이 완료된 일반 사용자 처리
+    if (currentUser.city) {
+        // 설정이 끝난 사용자가 다시 설정 페이지로 가면 /home으로 보냅니다.
+        if (location.pathname === '/start' || location.pathname === '/region-setup') {
+            return <Navigate to="/home" replace />;
+        }
+        // 그 외 모든 페이지는 접근 가능합니다.
+        return children;
+    }
+
+    // 혹시 모를 예외 상황 시 안전하게 /start로 보냅니다.
+    return <Navigate to="/start" replace />;
 };
-
 // --- 최상위 App 컴포넌트 ---
 function App() {
     return (
