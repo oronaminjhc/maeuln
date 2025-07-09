@@ -1854,34 +1854,73 @@ const ChatListPage = () => {
 
 // App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
 
+// App.js 파일에서 기존 ChatPage 컴포넌트를 이 코드로 완전히 교체하세요.
+
 const ChatPage = () => {
     const { currentUser } = useAuth();
     const { chatId } = useParams();
     const location = useLocation();
     
-    // location.state가 없을 경우를 대비하여 기본값 설정
     const recipientId = location.state?.recipientId;
 
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
+    const [isAllowed, setIsAllowed] = useState(false); // 채팅방 접근 권한 상태
+    const [loading, setLoading] = useState(true); // 채팅방 정보 로딩 상태
     const messagesEndRef = useRef(null);
     
+    // 메시지 목록을 실시간으로 구독하는 useEffect
     useEffect(() => {
-        // chatId가 없으면 아무것도 하지 않음
-        if (!chatId) return;
+        if (!chatId || !currentUser) return;
 
-        const messagesRef = collection(db, 'chats', chatId, 'messages');
-        const q = query(messagesRef, orderBy('createdAt', 'asc'));
-        
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        }, (error) => {
-            // 권한 오류 등으로 리스너가 실패할 경우
-            console.error("Error listening to messages:", error);
-        });
+        let unsubscribe = () => {};
 
-        return () => unsubscribe();
-    }, [chatId]);
+        const checkPermissionAndFetchMessages = async () => {
+            const chatRef = doc(db, 'chats', chatId);
+            
+            try {
+                // onSnapshot으로 채팅방 문서의 변화를 실시간 감지
+                unsubscribe = onSnapshot(chatRef, (chatSnap) => {
+                    if (chatSnap.exists()) {
+                        const data = chatSnap.data();
+                        if (data.members?.includes(currentUser.uid)) {
+                            // 권한이 있으면 메시지 구독 시작
+                            setIsAllowed(true);
+                            const messagesRef = collection(chatRef, 'messages');
+                            const q = query(messagesRef, orderBy('createdAt', 'asc'));
+                            
+                            const messagesUnsubscribe = onSnapshot(q, (snapshot) => {
+                                setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                            });
+                            // 중첩 구독 해제를 위해 반환
+                            return messagesUnsubscribe;
+                        } else {
+                            console.warn("접근 권한이 없습니다.");
+                            setIsAllowed(false);
+                        }
+                    } else {
+                        // 채팅방이 아직 생성되지 않은 상태
+                        console.warn("채팅방이 존재하지 않지만, 첫 메시지 전송 시 생성됩니다.");
+                        // 첫 메시지를 보낼 수 있도록 허용 상태로 둠
+                        setIsAllowed(true); 
+                    }
+                    setLoading(false);
+                });
+            } catch (error) {
+                console.error("Error checking chat permission:", error);
+                setLoading(false);
+            }
+        };
+
+        checkPermissionAndFetchMessages();
+
+        // 컴포넌트 언마운트 시 모든 구독 해제
+        return () => {
+            if (typeof unsubscribe === 'function') {
+                unsubscribe();
+            }
+        };
+    }, [chatId, currentUser]);
     
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1890,7 +1929,6 @@ const ChatPage = () => {
     const handleSendMessage = async (e) => {
         e.preventDefault();
         
-        // 메시지 내용이 없거나, 상대방 정보가 없으면 전송 불가
         if (!newMessage.trim() || !recipientId) {
             if (!recipientId) console.error("Recipient ID is missing.");
             return;
@@ -1905,27 +1943,28 @@ const ChatPage = () => {
         try {
             const chatRef = doc(db, 'chats', chatId);
             const chatSnap = await getDoc(chatRef);
-
             const batch = writeBatch(db);
 
-            // ★★★ 핵심 로직 ★★★
-            // 채팅방 문서가 존재하지 않으면, 먼저 생성합니다.
-            // 이 문서에는 보안 규칙을 통과하기 위한 `members` 필드가 반드시 포함되어야 합니다.
+            // 채팅방이 없는 경우, 먼저 생성
             if (!chatSnap.exists()) {
                 batch.set(chatRef, {
                     members: [currentUser.uid, recipientId],
                     lastMessage: messageData,
                 });
             } else {
-                // 기존 채팅방이 있다면, 마지막 메시지만 업데이트합니다.
+                // 채팅방이 있지만, 혹시 모를 상황에 대비해 멤버 추가 (필요 시)
+                const data = chatSnap.data();
+                if (!data.members?.includes(currentUser.uid)) {
+                    batch.update(chatRef, { members: arrayUnion(currentUser.uid) });
+                }
+                // 마지막 메시지 업데이트
                 batch.update(chatRef, { lastMessage: messageData });
             }
             
-            // 새 메시지 문서를 'messages' 서브컬렉션에 추가합니다.
+            // 새 메시지 문서 추가
             const newMessageRef = doc(collection(chatRef, 'messages'));
             batch.set(newMessageRef, messageData);
 
-            // 모든 작업을 한 번에 커밋합니다.
             await batch.commit();
             setNewMessage('');
         } catch (error) {
@@ -1933,6 +1972,14 @@ const ChatPage = () => {
             alert("메시지 전송 중 오류가 발생했습니다. 권한을 확인해주세요.");
         }
     };
+
+    if (loading) {
+        return <LoadingSpinner />;
+    }
+
+    if (!isAllowed) {
+        return <div className="p-4 text-center text-red-500">이 채팅방에 접근할 권한이 없습니다.</div>;
+    }
     
     return (
          <div className="flex flex-col h-full"> 
