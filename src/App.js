@@ -309,6 +309,18 @@ const RegionSetupPage = () => {
     const [apiLoading, setApiLoading] = useState(true);
     const [error, setError] = useState('');
 
+    // ★ 1. 저장이 완료되었음을 알리는 상태를 추가합니다.
+    const [isSaveComplete, setIsSaveComplete] = useState(false);
+
+    // ★ 2. 저장이 완료된 후, currentUser의 city 정보가 업데이트되는 것을 감지하는 로직을 추가합니다.
+    useEffect(() => {
+        // isSaveComplete 플래그가 true이고, currentUser에 city 정보가 생겼을 때만 실행됩니다.
+        if (isSaveComplete && currentUser?.city) {
+            navigate('/home');
+        }
+    }, [currentUser, isSaveComplete, navigate]); // currentUser나 isSaveComplete가 바뀔 때마다 확인합니다.
+
+
     useEffect(() => {
         const loadInitialRegions = async () => {
             setApiLoading(true);
@@ -363,13 +375,15 @@ const RegionSetupPage = () => {
                 likedNews: []
             }, { merge: true });
 
-	navigate('/home');
+            // ★ 3. 여기서 바로 이동하는 대신, 저장 완료 플래그만 true로 바꿔줍니다.
+            setIsSaveComplete(true);
 
         } catch (e) {
             console.error("Region save error:", e);
             setError("저장에 실패했습니다. 다시 시도해주세요.");
-            setLoading(false);
+            setLoading(false); // 에러가 발생했을 때만 로딩 상태를 풀어줍니다.
         }
+        // 성공했을 때는 로딩 상태를 풀지 않습니다. 페이지가 자연스럽게 넘어가므로 필요 없습니다.
     };
 
     const isCityDropdownDisabled = !selectedRegion || apiLoading || cities.length <= 1;
@@ -392,7 +406,7 @@ const RegionSetupPage = () => {
                         disabled={isCityDropdownDisabled}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200"
                     >
-                        <option value="">시/군/구 선택</option>
+                        <option value="">시/군 선택</option>
                         {apiLoading && selectedRegion ? <option>불러오는 중...</option> : cities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     {error && <p className="text-red-500 text-sm text-center">{error}</p>}
