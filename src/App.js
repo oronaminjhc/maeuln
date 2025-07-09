@@ -278,13 +278,14 @@ const StartPage = () => {
         </div>
     );
 };
+// App.js 파일에서 기존 RegionSetupPage 컴포넌트를 찾아서 아래 코드로 완전히 교체하세요.
 
 const RegionSetupPage = () => {
     const { currentUser } = useAuth();
     const [regions, setRegions] = useState([]);
     const [cities, setCities] = useState([]);
-    const [selectedRegion, setSelectedRegion] = useState({ code: '', name: '' });
-    const [selectedCity, setSelectedCity] = useState({ code: '', name: '' });
+    const [selectedRegion, setSelectedRegion] = useState('');
+    const [selectedCity, setSelectedCity] = useState('');
     const [loading, setLoading] = useState(false);
     const [apiLoading, setApiLoading] = useState(true);
     const [error, setError] = useState('');
@@ -299,14 +300,22 @@ const RegionSetupPage = () => {
         loadInitialRegions();
     }, []);
 
+    // ★★★ 핵심 로직 수정 ★★★
     useEffect(() => {
-        if (selectedRegion.code) {
+        if (selectedRegion) {
             const loadCities = async () => {
                 setApiLoading(true);
                 setCities([]);
-                setSelectedCity({ code: '', name: '' });
-                const cityData = await fetchCities(selectedRegion.code);
+                setSelectedCity('');
+                const cityData = await fetchCities(selectedRegion);
                 setCities(cityData);
+                
+                // 만약 시/군/구 목록이 하나뿐이라면 (특별시/광역시의 경우)
+                if (cityData.length === 1) {
+                    // 자동으로 해당 항목을 선택
+                    setSelectedCity(cityData[0]);
+                }
+                
                 setApiLoading(false);
             };
             loadCities();
@@ -315,20 +324,8 @@ const RegionSetupPage = () => {
         }
     }, [selectedRegion]);
 
-   const handleRegionChange = (e) => {
-    const selectedCode = e.target.value;
-    const selectedOption = regions.find(r => r.code === selectedCode);
-    setSelectedRegion(selectedOption || { code: '', name: '' });
-};
-
-    const handleCityChange = (e) => {
-        const selectedName = e.target.value;
-        const selectedOption = cities.find(c => c.name === selectedName);
-        setSelectedCity(selectedOption || { code: '', name: '' });
-    };
-
     const handleSaveRegion = async () => {
-        if (!selectedRegion.name || !selectedCity.name) {
+        if (!selectedRegion || !selectedCity) {
             setError('거주 지역을 모두 선택해주세요.');
             return;
         }
@@ -340,8 +337,8 @@ const RegionSetupPage = () => {
                 displayName: currentUser.displayName,
                 email: currentUser.email,
                 photoURL: currentUser.photoURL,
-                region: selectedRegion.name,
-                city: selectedCity.name,
+                region: selectedRegion, // 예: "서울특별시"
+                city: selectedCity,     // 예: "서울특별시"
                 town: '', 
                 createdAt: Timestamp.now(),
                 followers: [],
@@ -355,6 +352,9 @@ const RegionSetupPage = () => {
         }
     };
 
+    // 특별시/광역시는 두 번째 드롭다운을 비활성화할지 여부 결정
+    const isCityDropdownDisabled = !selectedRegion || apiLoading || cities.length === 1;
+
     return (
         <div className="flex flex-col items-center justify-center h-screen bg-white p-4">
             <div className="text-center mb-8">
@@ -362,17 +362,23 @@ const RegionSetupPage = () => {
                 <p className="text-gray-600 mt-2">서비스 이용을 위해<br />거주 지역을 설정해주세요.</p>
             </div>
             {apiLoading && !regions.length ? <LoadingSpinner/> : (
-   <div className="w-full max-w-xs space-y-4">
-    <select value={selectedRegion.code} onChange={handleRegionChange} /*...*/ >
-        <option value="">시/도 선택</option>
-        {regions.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}
-    </select>
-                    <select value={selectedCity.name} onChange={handleCityChange} disabled={!selectedRegion.code || apiLoading} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200">
+                <div className="w-full max-w-xs space-y-4">
+                    <select value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]">
+                        <option value="">시/도 선택</option>
+                        {regions.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <select 
+                        value={selectedCity} 
+                        onChange={(e) => setSelectedCity(e.target.value)} 
+                        disabled={isCityDropdownDisabled} // ★★★ 비활성화 로직 적용
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200"
+                    >
                         <option value="">시/군/구 선택</option>
-                        {apiLoading && selectedRegion.code ? <option>불러오는 중...</option> : cities.map(c => <option key={c.code} value={c.name}>{c.name}</option>)}
+                        {/* ★★★ 특별시/광역시 선택 시 이 드롭다운은 하나의 옵션만 보여주거나 비어있게 됨 */}
+                        {apiLoading && selectedRegion ? <option>불러오는 중...</option> : cities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-                    <button onClick={handleSaveRegion} disabled={loading || !selectedCity.name} className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400">
+                    <button onClick={handleSaveRegion} disabled={loading || !selectedCity} className="w-full mt-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] transition-colors shadow-lg disabled:bg-gray-400">
                         {loading ? "저장 중..." : "마을N 시작하기"}
                     </button>
                 </div>
