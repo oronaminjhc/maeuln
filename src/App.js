@@ -2271,29 +2271,31 @@ const ProtectedRoute = ({ children }) => {
     const location = useLocation();
 
     if (loading) {
-        return (
-            <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center">
-                <LoadingSpinner />
-            </div>
-        );
+        return <div className="max-w-sm mx-auto bg-white min-h-screen flex items-center justify-center"><LoadingSpinner /></div>;
     }
 
+    // 로그인 O, 지역설정 O -> /start, /region-setup 접근 시 /home으로
+    if (currentUser && currentUser.city) {
+        if (location.pathname === '/start' || location.pathname === '/region-setup') {
+            return <Navigate to="/home" replace />;
+        }
+    }
+
+    // 로그인 O, 지역설정 X -> /region-setup 아닌 곳 접근 시 /region-setup으로
+    if (currentUser && !currentUser.city && !currentUser.isAdmin) {
+        if (location.pathname !== '/region-setup') {
+            return <Navigate to="/region-setup" replace />;
+        }
+    }
+    
+    // 로그인 X -> /start, /region-setup 아닌 곳 접근 시 /start로
     if (!currentUser) {
-        return location.pathname === '/start' ? children : <Navigate to="/start" replace />;
+        if (location.pathname !== '/start' && location.pathname !== '/region-setup') {
+            return <Navigate to="/start" replace />;
+        }
     }
 
-    if (currentUser.isAdmin) {
-        return (location.pathname === '/start' || location.pathname === '/region-setup') ? <Navigate to="/home" replace /> : children;
-    }
-    
-    if (!currentUser.city) {
-        return location.pathname === '/region-setup' ? children : <Navigate to="/region-setup" replace />;
-    }
-    
-    if (currentUser.city) {
-        return (location.pathname === '/start' || location.pathname === '/region-setup') ? <Navigate to="/home" replace /> : children;
-    }
-
+    // 그 외 모든 경우는 허용
     return children;
 };
 
@@ -2304,41 +2306,40 @@ function App() {
             <AuthProvider>
                 <BrowserRouter>
                     <div className="max-w-sm mx-auto bg-gray-50 shadow-lg min-h-screen font-sans text-gray-800">
+                        {/* 모든 라우트를 ProtectedRoute가 감싸도록 구조를 변경합니다. */}
                         <Routes>
-                            <Route path="/start" element={<StartPage />} />
-                            <Route path="/region-setup" element={
-                                <ProtectedRoute>
-                                    <RegionSetupPage />
-                                </ProtectedRoute>
-                            } />
-                            
                             <Route path="/*" element={
                                 <ProtectedRoute>
-                                    <MainLayout>
-                                        <Routes>
-                                            <Route path="/home" element={<HomePage />} />
-                                            <Route path="/news" element={<NewsPage />} />
-                                            <Route path="/news/write" element={<NewsWritePage />} />
-                                            <Route path="/news/edit/:newsId" element={<NewsWritePage />} />
-                                            <Route path="/board" element={<BoardPage />} />
-                                            <Route path="/post/write" element={<WritePage />} />
-                                            <Route path="/post/edit/:postId" element={<WritePage />} />
-                                            <Route path="/post/:postId" element={<PostDetailPage />} />
-                                            <Route path="/calendar" element={<CalendarPage />} />
-                                            <Route path="/profile/:userId" element={<UserProfilePage />} />
-                                            <Route path="/profile/edit" element={<ProfileEditPage />} />
-                                            <Route path="/search" element={<SearchPage />} />
-                                            <Route path="/notifications" element={<NotificationsPage />} />
-                                            <Route path="/chats" element={<ChatListPage />} />
-                                            <Route path="/chat/:chatId" element={<ChatPage />} />
-                                            <Route path="/clubs" element={<ClubListPage />} />
-                                            <Route path="/clubs/create" element={<ClubCreatePage />} />
-                                            <Route path="/clubs/:clubId" element={<ClubDetailPage />} />
-                                            <Route path="*" element={<Navigate to="/home" replace />} />
-                                        </Routes>
-                                    </MainLayout>
+                                    <Routes>
+                                        {/* 보호되지 않아야 할 경로는 여기에 둡니다. */}
+                                        <Route path="/start" element={<StartPage />} />
+                                        <Route path="/region-setup" element={<RegionSetupPage />} />
+                                        
+                                        {/* 보호되어야 할 경로는 MainLayout으로 감쌉니다. */}
+                                        <Route path="/home" element={<MainLayout><HomePage /></MainLayout>} />
+                                        <Route path="/news" element={<MainLayout><NewsPage /></MainLayout>} />
+                                        <Route path="/news/write" element={<MainLayout><NewsWritePage /></MainLayout>} />
+                                        <Route path="/news/edit/:newsId" element={<MainLayout><NewsWritePage /></MainLayout>} />
+                                        <Route path="/board" element={<MainLayout><BoardPage /></MainLayout>} />
+                                        <Route path="/post/write" element={<MainLayout><WritePage /></MainLayout>} />
+                                        <Route path="/post/edit/:postId" element={<MainLayout><WritePage /></MainLayout>} />
+                                        <Route path="/post/:postId" element={<MainLayout><PostDetailPage /></MainLayout>} />
+                                        <Route path="/calendar" element={<MainLayout><CalendarPage /></MainLayout>} />
+                                        <Route path="/profile/:userId" element={<MainLayout><UserProfilePage /></MainLayout>} />
+                                        <Route path="/profile/edit" element={<MainLayout><ProfileEditPage /></MainLayout>} />
+                                        <Route path="/search" element={<MainLayout><SearchPage /></MainLayout>} />
+                                        <Route path="/notifications" element={<MainLayout><NotificationsPage /></MainLayout>} />
+                                        <Route path="/chats" element={<MainLayout><ChatListPage /></MainLayout>} />
+                                        <Route path="/chat/:chatId" element={<MainLayout><ChatPage /></MainLayout>} />
+                                        <Route path="/clubs" element={<MainLayout><ClubListPage /></MainLayout>} />
+                                        <Route path="/clubs/create" element={<MainLayout><ClubCreatePage /></MainLayout>} />
+                                        <Route path="/clubs/:clubId" element={<MainLayout><ClubDetailPage /></MainLayout>} />
+                                        
+                                        {/* 다른 모든 경로는 /home으로 리디렉션 */}
+                                        <Route path="*" element={<Navigate to="/home" replace />} />
+                                    </Routes>
                                 </ProtectedRoute>
-                            } />
+                            }/>
                         </Routes>
                     </div>
                 </BrowserRouter>
