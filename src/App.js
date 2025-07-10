@@ -1397,7 +1397,6 @@ const ProfileEditPage = () => {
 };
 
 // App.js 파일의 UserProfilePage 함수를 이 코드로 교체하세요.
-
 const UserProfilePage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
@@ -1405,12 +1404,12 @@ const UserProfilePage = () => {
     const [profileUser, setProfileUser] = useState(null);
     const [userPosts, setUserPosts] = useState(null);
 
-    // ▼▼▼ UI 개선을 위한 상태 추가 ▼▼▼
+    // ▼ UI 개선을 위한 상태 추가
     const [allRegions, setAllRegions] = useState([]);
     const [availableCities, setAvailableCities] = useState([]);
     const [selectedAdminRegion, setSelectedAdminRegion] = useState('');
     const [selectedAdminCity, setSelectedAdminCity] = useState(adminSelectedCity || '');
-    // ▲▲▲ UI 개선을 위한 상태 추가 ▲▲▲
+    // ▲ UI 개선을 위한 상태 추가
 
     const [isAdminModeOn, setIsAdminModeOn] = useState(!!adminSelectedCity);
 
@@ -1429,7 +1428,7 @@ const UserProfilePage = () => {
     }, [currentUser?.isAdmin, adminSelectedCity]);
 
     useEffect(() => {
-        if (selectedAdminRegion) {
+        if (selectedAdminRegion && selectedAdminRegion !== "전체") {
             fetchCities(selectedAdminRegion).then(setAvailableCities);
         } else {
             setAvailableCities([]);
@@ -1467,27 +1466,53 @@ const UserProfilePage = () => {
     };
 
     const handleRegionViewChange = () => {
-        if(selectedAdminCity === "전체") {
-             setAdminSelectedCity(null);
-        } else {
-             setAdminSelectedCity(selectedAdminCity);
-        }
-        alert(`${selectedAdminRegion} ${selectedAdminCity} (으)로 뷰가 변경되었습니다.`);
+        let finalCity = selectedAdminRegion === "전체" ? null : selectedAdminCity;
+        setAdminSelectedCity(finalCity);
+        alert(`${finalCity ? `${selectedAdminRegion} ${finalCity}` : '전체 보기'} (으)로 뷰가 변경되었습니다.`);
         navigate('/home');
     };
 
-    const handleFollow = async () => { /* 기존 코드 유지 */ };
-    const handleLogout = async () => { /* 기존 코드 유지 */ };
-    const handleMessage = () => { /* 기존 코드 유지 */ };
+    const handleFollow = async () => {
+        if (!currentUser || !profileUser) return;
+        const currentUserRef = doc(db, 'users', currentUser.uid);
+        const profileUserRef = doc(db, 'users', userId);
+        try {
+            const isCurrentlyFollowing = profileUser.followers?.includes(currentUser.uid);
+            const batch = writeBatch(db);
+            if (isCurrentlyFollowing) {
+                batch.update(currentUserRef, { following: arrayRemove(userId) });
+                batch.update(profileUserRef, { followers: arrayRemove(currentUser.uid) });
+            } else {
+                batch.update(currentUserRef, { following: arrayUnion(userId) });
+                batch.update(profileUserRef, { followers: arrayUnion(currentUser.uid) });
+            }
+            await batch.commit();
+        } catch (error) {
+            console.error("팔로우 처리 중 오류:", error);
+            alert("팔로우 처리 중 오류가 발생했습니다.");
+        }
+    };
+
+    const handleLogout = async () => {
+        if (window.confirm('로그아웃 하시겠습니까?')) {
+            await signOut(auth);
+            navigate('/start');
+        }
+    };
+
+    const handleMessage = () => {
+        const chatId = [currentUser.uid, userId].sort().join('_');
+        navigate(`/chat/${chatId}`, { state: { recipientId: userId, recipientName: profileUser.displayName }});
+    };
 
     if (profileUser === null || userPosts === null) return <LoadingSpinner />;
     if (!profileUser) return <div className='p-4 text-center'>사용자를 찾을 수 없습니다.</div>;
-    
-    //... (UserProfilePage의 나머지 return 부분은 거의 동일하게 유지)
 
+    const isMyProfile = currentUser.uid === userId;
+    const isFollowing = profileUser.followers?.includes(currentUser.uid) || false;
+    
     return (
         <div className="p-4 pb-16">
-             {/* ... 기존 프로필 정보, 버튼 등 ... */}
              <div className="flex items-center mb-6">
                  <div className="w-16 h-16 rounded-full mr-4 flex-shrink-0 bg-gray-200 overflow-hidden flex items-center justify-center">
                     {profileUser.photoURL ? ( <img src={profileUser.photoURL} alt={profileUser.displayName} className="w-full h-full object-cover" /> ) : ( <UserCircle size={64} className="text-gray-400" /> )}
