@@ -36,6 +36,7 @@ const storage = getStorage(app);
 const AuthContext = createContext();
 
 // App.js 파일의 AuthProvider 함수를 교체하세요.
+// App.js 파일의 AuthProvider 함수를 이 코드로 교체하세요.
 const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -429,7 +430,7 @@ const HomePage = () => {
     const [buanNews, setBuanNews] = useState(null);
     const [followingPosts, setFollowingPosts] = useState([]);
     const [userEvents, setUserEvents] = useState({});
-    const [likedNews, setLikedNews] = useState([]);
+    const [likedNews, setLikedNews] = useState(currentUser?.likedNews || []); // 초기값 설정
 
     const displayCity = adminSelectedCity || (currentUser.isAdmin ? '전국' : currentUser.city);
 
@@ -440,11 +441,16 @@ const HomePage = () => {
 
     useEffect(() => {
         if (!currentUser || (!currentUser.isAdmin && !currentUser.city)) return;
+        setLikedNews(currentUser.likedNews || []); // currentUser가 변경될 때마다 likedNews도 업데이트
+    }, [currentUser]);
+
+
+    useEffect(() => {
+        if (!currentUser || (!currentUser.isAdmin && !currentUser.city)) return;
         const currentTargetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
         if (!currentUser.isAdmin && !currentTargetCity) { setPosts([]); setBuanNews([]); return; }
 
         const unsubscribes = [];
-        setLikedNews(currentUser.likedNews || []);
 
         const basePostsQuery = currentTargetCity ? [where("city", "==", currentTargetCity)] : [];
         unsubscribes.push(onSnapshot(query(collection(db, "posts"), ...basePostsQuery, orderBy("createdAt", "desc"), limit(50)), (snapshot) => setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setPosts([])));
@@ -469,7 +475,7 @@ const HomePage = () => {
     const handleLikeNews = async (newsItem) => {
         if (!currentUser || !newsItem) return;
         const userRef = doc(db, 'users', currentUser.uid);
-        const isCurrentlyLiked = (currentUser.likedNews || []).includes(newsItem.id);
+        const isCurrentlyLiked = likedNews.includes(newsItem.id);
         const eventsCollectionRef = collection(db, 'users', currentUser.uid, 'events');
 
         try {
@@ -490,11 +496,21 @@ const HomePage = () => {
         } catch (error) { console.error("좋아요/달력 업데이트 오류:", error); alert("작업 처리 중 오류가 발생했습니다.");}
     };
 
-    const handleDeleteNews = async (newsId, imagePath) => { /* ... 기존과 동일 ... */ };
+    const handleDeleteNews = async (newsId, imagePath) => {
+        if (!currentUser.isAdmin) return;
+        if (window.confirm("정말로 이 소식을 삭제하시겠습니까?")) {
+            try {
+                if (imagePath) await deleteObject(ref(storage, imagePath));
+                await deleteDoc(doc(db, 'news', newsId));
+                alert("소식이 삭제되었습니다.");
+            } catch (error) { alert(`소식 삭제 중 오류: ${error.message}`); }
+        }
+    };
+
     if (posts === null || buanNews === null) return <LoadingSpinner />;
     const popularPosts = posts ? [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3) : [];
 
-    // ... return JSX 부분은 기존과 동일 ...
+    // return JSX 부분은 기존과 동일하게 유지합니다.
     return (
         <div className="p-4 space-y-8">
             <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
@@ -514,7 +530,7 @@ const HomePage = () => {
                     {buanNews.length > 0 ? (
                         buanNews.map((news) => (
                             <div key={news.id} className="w-4/5 md:w-3/5 flex-shrink-0">
-                                <NewsCard {...{ news, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: (currentUser.likedNews || []).includes(news.id) }} />
+                                <NewsCard {...{ news, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id) }} />
                             </div>
                         ))
                     ) : (
@@ -769,8 +785,14 @@ const NewsWritePage = () => {
             loadAllRegions();
         }
     }, [currentUser?.isAdmin, itemToEdit]);
-
-    const handleImageChange = (e) => { /* ... 기존과 동일 ... */ };
+    
+    const handleImageChange = (e) => {
+        if (e.target.files[0]) {
+            const file = e.target.files[0];
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
     
     const handleSubmit = async () => {
         if (!title.trim() || !content.trim() || !date) { alert('날짜, 제목, 내용을 모두 입력해주세요.'); return; }
@@ -806,7 +828,7 @@ const NewsWritePage = () => {
 
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
     
-    // ... return JSX 부분도 지역 선택 UI가 포함된 코드로 변경 ...
+    // return JSX 부분도 지역 선택 UI가 포함된 코드로 변경
     return (
         <div>
             <div className="p-4 flex items-center border-b">
