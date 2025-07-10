@@ -55,8 +55,8 @@ const AuthProvider = ({ children }) => {
                         finalUser = { ...finalUser, ...userData };
                     }
                     
-                    // 'role' 필드를 기반으로 관리자 여부를 판단합니다.
-                    finalUser.isAdmin = finalUser.role === 'admin';
+                    // ADMIN_UID와 현재 로그인한 사용자의 UID를 비교하여 관리자 여부를 판단합니다.
+		finalUser.isAdmin = user.uid === ADMIN_UID;
 
                     // photoURL http -> https 변환
                     if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
