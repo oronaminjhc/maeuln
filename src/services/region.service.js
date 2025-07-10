@@ -1,37 +1,27 @@
 // src/services/region.service.js
 
-// 로컬 데이터 파일 import
-import { regionData } from '../mock-regions';
+// ... 기존 fetchRegions, fetchCities 함수 ...
 
-/**
- * 모든 시/도 이름 목록을 가져옵니다.
- * @returns {Promise<string[]>} 시/도 이름 배열
- */
-export const fetchRegions = async () => {
-  // regionData에서 'sido' 이름만 추출하여 배열로 반환
-  const sidoList = regionData.map(region => region.sido);
-  return Promise.resolve(sidoList); // 비동기 함수 형식을 맞추기 위해 Promise로 감싸서 반환
-};
+// ▼▼▼ 이 함수를 파일에 추가해주세요 ▼▼▼
+export const getAllRegionCityMap = async () => {
+    try {
+        const regions = await fetchRegions();
+        const citiesByRegion = {};
+        const cityToRegion = {};
 
-/**
- * 선택된 시/도에 해당하는 시/군/구 목록을 가져옵니다.
- * @param {string} selectedSido - 사용자가 선택한 시/도 이름
- * @returns {Promise<string[]>} 시/군/구 이름 배열
- */
-export const fetchCities = async (selectedSido) => {
-  if (!selectedSido) {
-    return Promise.resolve([]); // 선택된 시/도가 없으면 빈 배열 반환
-  }
+        const cityPromises = regions.map(async (region) => {
+            const cities = await fetchCities(region);
+            citiesByRegion[region] = cities;
+            cities.forEach(city => {
+                cityToRegion[city] = region;
+            });
+        });
 
-  // regionData에서 선택된 시/도와 일치하는 객체를 찾음
-  const selectedRegion = regionData.find(region => region.sido === selectedSido);
-
-  if (selectedRegion) {
-    // 찾은 객체의 'sigungu' 배열을 반환
-    return Promise.resolve(selectedRegion.sigungu);
-  } else {
-    // 일치하는 데이터가 없으면 빈 배열 반환
-    console.warn(`No cities found for selected region: ${selectedSido}`);
-    return Promise.resolve([]);
-  }
+        await Promise.all(cityPromises);
+        
+        return { regions, citiesByRegion, cityToRegion };
+    } catch (error) {
+        console.error("Error fetching all region-city maps:", error);
+        return { regions: [], citiesByRegion: {}, cityToRegion: {} }; // 에러 발생 시 빈 객체 반환
+    }
 };
