@@ -865,7 +865,7 @@ const NewsWritePage = () => {
             };
 
             if (itemToEdit) {
-                await updateDoc(doc(db, 'news', itemToedit.id), finalData);
+                await updateDoc(doc(db, 'news', itemToEdit.id), finalData);
             } else {
                 finalData.createdAt = Timestamp.now();
                 finalData.authorId = currentUser.uid;
