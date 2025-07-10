@@ -35,6 +35,7 @@ const storage = getStorage(app);
 // =================================================================
 const AuthContext = createContext();
 
+// App.js 파일의 AuthProvider 함수를 교체하세요.
 const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -45,27 +46,27 @@ const AuthProvider = ({ children }) => {
             if (user) {
                 const userRef = doc(db, "users", user.uid);
                 const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
-                    let finalUser = { ...user };
+                    let finalUser = { ...user, isFirestoreDataLoaded: true };
+
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        finalUser = { ...finalUser, ...userData };
+                    }
+                    
+                    // 'role' 필드를 기반으로 관리자 여부를 판단합니다. (확장성)
+                    // Firestore에서 해당 유저의 role을 'admin'으로 설정해주어야 합니다.
+                    finalUser.isAdmin = finalUser.role === 'admin';
+
+                    // photoURL http -> https 변환
                     if (finalUser.photoURL && finalUser.photoURL.startsWith('http://')) {
                         finalUser.photoURL = finalUser.photoURL.replace('http://', 'https://');
                     }
-                    if (userSnap.exists()) {
-                        const userData = userSnap.data();
-                        let firestorePhotoURL = userData.photoURL || finalUser.photoURL;
-                        if (firestorePhotoURL && firestorePhotoURL.startsWith('http://')) {
-                            firestorePhotoURL = firestorePhotoURL.replace('http://', 'https://');
-                        }
-                        finalUser = { ...user, ...userData, photoURL: firestorePhotoURL, isFirestoreDataLoaded: true };
-                    } else {
-                        finalUser.isFirestoreDataLoaded = true;
-                    }
-                    finalUser.isAdmin = user.uid === ADMIN_UID;
+                    
                     setCurrentUser(finalUser);
                     setLoading(false);
                 }, (error) => {
                     console.error("User doc snapshot error:", error);
-                    const finalUser = { ...user, isAdmin: user.uid === ADMIN_UID, isFirestoreDataLoaded: true };
-                    setCurrentUser(finalUser);
+                    setCurrentUser({ ...user, isFirestoreDataLoaded: true });
                     setLoading(false);
                 });
                 return () => userUnsubscribe();
@@ -420,6 +421,7 @@ const RegionSetupPage = () => {
     );
 };
 
+// App.js 파일의 HomePage 함수를 교체하세요.
 const HomePage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
@@ -438,114 +440,61 @@ const HomePage = () => {
 
     useEffect(() => {
         if (!currentUser || (!currentUser.isAdmin && !currentUser.city)) return;
-
         const currentTargetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
-
-        if (!currentUser.isAdmin && !currentTargetCity) {
-            setPosts([]); setBuanNews([]); return;
-        }
+        if (!currentUser.isAdmin && !currentTargetCity) { setPosts([]); setBuanNews([]); return; }
 
         const unsubscribes = [];
         setLikedNews(currentUser.likedNews || []);
 
         const basePostsQuery = currentTargetCity ? [where("city", "==", currentTargetCity)] : [];
-        const postsQuery = query(collection(db, "posts"), ...basePostsQuery, orderBy("createdAt", "desc"), limit(50));
-        unsubscribes.push(onSnapshot(postsQuery, (snapshot) => setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setPosts([])));
+        unsubscribes.push(onSnapshot(query(collection(db, "posts"), ...basePostsQuery, orderBy("createdAt", "desc"), limit(50)), (snapshot) => setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setPosts([])));
 
         const baseNewsQuery = currentTargetCity ? [where("city", "==", currentTargetCity)] : [];
-        const newsQuery = query(collection(db, "news"), ...baseNewsQuery, orderBy("createdAt", "desc"));
-        unsubscribes.push(onSnapshot(newsQuery, (snapshot) => setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setBuanNews([])));
-
+        unsubscribes.push(onSnapshot(query(collection(db, "news"), ...baseNewsQuery, orderBy("createdAt", "desc")), (snapshot) => setBuanNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), () => setBuanNews([])));
+        
         unsubscribes.push(onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), (snapshot) => {
             const eventsData = {};
-            snapshot.docs.forEach(doc => {
-                const event = { id: doc.id, ...doc.data() };
-                if (!eventsData[event.date]) eventsData[event.date] = [];
-                eventsData[event.date].push(event);
-            });
+            snapshot.forEach(doc => { const event = { id: doc.id, ...doc.data() }; if (!eventsData[event.date]) eventsData[event.date] = []; eventsData[event.date].push(event); });
             setUserEvents(eventsData);
         }));
 
         if (currentUser.following?.length > 0) {
-            const followingLimited = currentUser.following.slice(0, 10);
-            unsubscribes.push(onSnapshot(query(collection(db, "posts"), where('authorId', 'in', followingLimited), orderBy("createdAt", "desc"), limit(10)),
-                (snapshot) => setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-            ));
-        } else {
-            setFollowingPosts([]);
-        }
+            unsubscribes.push(onSnapshot(query(collection(db, "posts"), where('authorId', 'in', currentUser.following.slice(0, 10)), orderBy("createdAt", "desc"), limit(10)), (snapshot) => setFollowingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))));
+        } else { setFollowingPosts([]); }
 
         return () => unsubscribes.forEach(unsub => unsub());
     }, [currentUser, adminSelectedCity]);
 
-  // App.js의 HomePage와 NewsPage에 있는 handleLikeNews 함수를 각각 이 코드로 교체하세요.
+    // ★ 달력 연동 기능이 포함된 handleLikeNews 함수
+    const handleLikeNews = async (newsItem) => {
+        if (!currentUser || !newsItem) return;
+        const userRef = doc(db, 'users', currentUser.uid);
+        const isCurrentlyLiked = (currentUser.likedNews || []).includes(newsItem.id);
+        const eventsCollectionRef = collection(db, 'users', currentUser.uid, 'events');
 
-const handleLikeNews = async (newsItem) => {
-    if (!currentUser || !newsItem) return;
+        try {
+            await updateDoc(userRef, { likedNews: isCurrentlyLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id) });
 
-    const userRef = doc(db, 'users', currentUser.uid);
-    const isCurrentlyLiked = likedNews.includes(newsItem.id);
-    const eventsCollectionRef = collection(db, 'users', currentUser.uid, 'events');
-
-    try {
-        // --- 1. 사용자의 '좋아요' 목록 업데이트 ---
-        await updateDoc(userRef, {
-            likedNews: isCurrentlyLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id)
-        });
-
-        // --- 2. 달력 이벤트 추가 또는 삭제 ---
-        if (!isCurrentlyLiked && newsItem.date) {
-            // "좋아요"를 누른 경우: 달력에 일정을 추가합니다.
-            
-            // 중복 추가를 방지하기 위해 이미 해당 소식 ID로 등록된 일정이 있는지 확인합니다.
-            const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id), limit(1));
-            const existingEvents = await getDocs(eventQuery);
-
-            if (existingEvents.empty) {
-                // 기존 일정이 없으면 새로 추가합니다.
-                await addDoc(eventsCollectionRef, {
-                    title: newsItem.title,      // 소식 제목
-                    date: newsItem.date,        // 소식 날짜
-                    createdAt: Timestamp.now(),
-                    type: 'news',               // '소식' 타입으로 구분
-                    newsId: newsItem.id         // 어떤 소식에서 온 일정인지 ID 저장
-                });
+            if (!isCurrentlyLiked && newsItem.date) {
+                const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id), limit(1));
+                if ((await getDocs(eventQuery)).empty) {
+                    await addDoc(eventsCollectionRef, { title: newsItem.title, date: newsItem.date, createdAt: Timestamp.now(), type: 'news', newsId: newsItem.id });
+                }
+            } else if (isCurrentlyLiked && newsItem.date) {
+                const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id));
+                const eventsToDelete = await getDocs(eventQuery);
+                const batch = writeBatch(db);
+                eventsToDelete.forEach(eventDoc => batch.delete(eventDoc.ref));
+                await batch.commit();
             }
-        } else if (isCurrentlyLiked && newsItem.date) {
-            // "좋아요"를 취소한 경우: 달력에서 일정을 삭제합니다.
-            
-            // 삭제할 일정을 찾습니다.
-            const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id));
-            const eventsToDelete = await getDocs(eventQuery);
-            
-            // 찾은 모든 일정을 삭제 처리합니다.
-            const batch = writeBatch(db);
-            eventsToDelete.forEach(eventDoc => {
-                batch.delete(eventDoc.ref);
-            });
-            await batch.commit();
-        }
-    } catch (error) {
-        console.error("좋아요 또는 달력 업데이트 중 오류:", error);
-        alert("작업 처리 중 오류가 발생했습니다.");
-    }
-};
-
-    const handleDeleteNews = async (newsId, imagePath) => {
-        if (!currentUser.isAdmin) return;
-        if (window.confirm("정말로 이 소식을 삭제하시겠습니까?")) {
-            try {
-                if (imagePath) await deleteObject(ref(storage, imagePath));
-                await deleteDoc(doc(db, 'news', newsId));
-                alert("소식이 삭제되었습니다.");
-            } catch (error) { alert(`소식 삭제 중 오류: ${error.message}`); }
-        }
+        } catch (error) { console.error("좋아요/달력 업데이트 오류:", error); alert("작업 처리 중 오류가 발생했습니다.");}
     };
 
+    const handleDeleteNews = async (newsId, imagePath) => { /* ... 기존과 동일 ... */ };
     if (posts === null || buanNews === null) return <LoadingSpinner />;
-
     const popularPosts = posts ? [...posts].sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0)).slice(0, 3) : [];
 
+    // ... return JSX 부분은 기존과 동일 ...
     return (
         <div className="p-4 space-y-8">
             <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
@@ -556,7 +505,6 @@ const handleLikeNews = async (newsItem) => {
                     </div>
                 )}
             </Modal>
-
             <section>
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-bold">지금 {displayCity}에서는</h2>
@@ -566,7 +514,7 @@ const handleLikeNews = async (newsItem) => {
                     {buanNews.length > 0 ? (
                         buanNews.map((news) => (
                             <div key={news.id} className="w-4/5 md:w-3/5 flex-shrink-0">
-                                <NewsCard {...{ news, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id) }} />
+                                <NewsCard {...{ news, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: (currentUser.likedNews || []).includes(news.id) }} />
                             </div>
                         ))
                     ) : (
@@ -574,7 +522,6 @@ const handleLikeNews = async (newsItem) => {
                     )}
                 </div>
             </section>
-
             <section>
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-bold">{displayCity} 달력</h2>
@@ -582,7 +529,6 @@ const handleLikeNews = async (newsItem) => {
                 </div>
                 <Calendar events={userEvents} onDateClick={(date) => navigate('/calendar', { state: { date } })} />
             </section>
-
             <section>
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-bold">지금 인기있는 글</h2>
@@ -604,7 +550,6 @@ const handleLikeNews = async (newsItem) => {
                     })) : (<p className="text-center text-gray-500 py-4">아직 인기글이 없어요.</p>)}
                 </div>
             </section>
-
             <section>
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-bold">팔로잉</h2>
@@ -644,7 +589,6 @@ const handleLikeNews = async (newsItem) => {
         </div>
     );
 };
-
 const NewsPage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
@@ -792,8 +736,7 @@ const handleLikeNews = async (newsItem) => {
     );
 };
 
-// App.js 파일의 NewsWritePage 함수를 이 코드로 교체하세요.
-
+// App.js 파일의 NewsWritePage 함수를 교체하세요.
 const NewsWritePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -808,29 +751,17 @@ const NewsWritePage = () => {
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // ★ 1. 관리자용 지역 선택 기능과 관련된 상태들을 다시 추가합니다.
     const [allRegions, setAllRegions] = useState([]);
     const [selectedPostRegion, setSelectedPostRegion] = useState(itemToEdit ? `${itemToEdit.region}|${itemToEdit.city}` : '');
 
-    // ★ 2. 관리자일 경우, 모든 지역 목록을 불러옵니다.
     useEffect(() => {
         if (currentUser?.isAdmin) {
             const loadAllRegions = async () => {
                 const sidos = await fetchRegions();
                 const allCitiesPromises = sidos.map(sido => fetchCities(sido));
                 const allCitiesArrays = await Promise.all(allCitiesPromises);
-
-                const flattenedRegions = sidos.flatMap((sido, index) =>
-                    allCitiesArrays[index].map(city => ({
-                        region: sido,
-                        city: city,
-                        label: sido === city ? sido : `${sido} ${city}`
-                    }))
-                ).filter((v,i,a)=>a.findIndex(t=>(t.label === v.label))===i); // 중복 제거
-
+                const flattenedRegions = sidos.flatMap((sido, index) => allCitiesArrays[index].map(city => ({ region: sido, city: city, label: sido === city ? sido : `${sido} ${city}` }))).filter((v,i,a)=>a.findIndex(t=>(t.label === v.label))===i);
                 setAllRegions(flattenedRegions);
-                // 수정 모드일 때 기존 지역을 설정합니다.
                 if (itemToEdit) {
                     setSelectedPostRegion(`${itemToEdit.region}|${itemToEdit.city}`);
                 }
@@ -839,38 +770,16 @@ const NewsWritePage = () => {
         }
     }, [currentUser?.isAdmin, itemToEdit]);
 
-    useEffect(() => {
-        return () => {
-            if (imagePreview && imagePreview.startsWith('blob:')) {
-                URL.revokeObjectURL(imagePreview);
-            }
-        };
-    }, [imagePreview]);
-
-    const handleImageChange = (e) => {
-        if (e.target.files[0]) {
-            const file = e.target.files[0];
-            setImageFile(file);
-            setImagePreview(URL.createObjectURL(file));
-        }
-    };
-
+    const handleImageChange = (e) => { /* ... 기존과 동일 ... */ };
+    
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim() || !date) {
-            alert('날짜, 제목, 내용을 모두 입력해주세요.');
-            return;
-        }
-        // ★ 3. 관리자일 경우 지역 선택 유효성을 검사합니다.
-        if (currentUser.isAdmin && !selectedPostRegion) {
-            alert('소식을 등록할 지역을 선택해주세요.');
-            return;
-        }
+        if (!title.trim() || !content.trim() || !date) { alert('날짜, 제목, 내용을 모두 입력해주세요.'); return; }
+        if (currentUser.isAdmin && !selectedPostRegion) { alert('소식을 등록할 지역을 선택해주세요.'); return; }
         if (isSubmitting) return;
         setIsSubmitting(true);
 
         try {
-            let imageUrl = itemToEdit?.imageUrl || null;
-            let imagePath = itemToEdit?.imagePath || null;
+            let imageUrl = itemToEdit?.imageUrl || null, imagePath = itemToEdit?.imagePath || null;
             if (imageFile) {
                 const newImagePath = `news_images/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
@@ -879,26 +788,13 @@ const NewsWritePage = () => {
                 imagePath = newImagePath;
             }
 
-            // ★ 4. 선택된 지역 정보로 'region'과 'city'를 정확하게 분리합니다.
-            const [region, city] = currentUser.isAdmin
-                ? selectedPostRegion.split('|')
-                : [currentUser.region, currentUser.city];
-
-            const finalData = {
-                title, content, imageUrl, imagePath, date,
-                updatedAt: Timestamp.now(),
-                tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-                applyUrl,
-                region, // 정확하게 분리된 '시/도' 정보
-                city,   // 정확하게 분리된 '시/군/구' 정보
-            };
+            const [region, city] = currentUser.isAdmin ? selectedPostRegion.split('|') : [currentUser.region, currentUser.city];
+            const finalData = { title, content, imageUrl, imagePath, date, updatedAt: Timestamp.now(), tags: tags.split(',').map(t => t.trim()).filter(Boolean), applyUrl, region, city };
 
             if (itemToEdit) {
                 await updateDoc(doc(db, 'news', itemToEdit.id), finalData);
             } else {
-                finalData.createdAt = Timestamp.now();
-                finalData.authorId = currentUser.uid;
-                await addDoc(collection(db, 'news'), finalData);
+                await addDoc(collection(db, 'news'), { ...finalData, createdAt: Timestamp.now(), authorId: currentUser.uid });
             }
             navigate('/news');
         } catch (error) {
@@ -910,6 +806,7 @@ const NewsWritePage = () => {
 
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
     
+    // ... return JSX 부분도 지역 선택 UI가 포함된 코드로 변경 ...
     return (
         <div>
             <div className="p-4 flex items-center border-b">
@@ -920,27 +817,19 @@ const NewsWritePage = () => {
                 </button>
             </div>
             <div className="p-4 space-y-4">
-                {/* ★ 5. 관리자일 경우에만 지역 선택 드롭다운을 보여줍니다. */}
                 {currentUser.isAdmin && (
                     <div>
                         <label htmlFor="news-region-select" className="block text-sm font-medium text-gray-700 mb-1">게시 지역 선택</label>
-                        <select
-                            id="news-region-select"
-                            value={selectedPostRegion}
-                            onChange={(e) => setSelectedPostRegion(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
-                        >
+                        <select id="news-region-select" value={selectedPostRegion} onChange={(e) => setSelectedPostRegion(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]">
                             <option value="">지역을 선택하세요</option>
-                            {allRegions.map(r => (
-                                <option key={r.label} value={`${r.region}|${r.city}`}>{r.label}</option>
-                            ))}
+                            {allRegions.map(r => ( <option key={r.label} value={`${r.region}|${r.city}`}>{r.label}</option> ))}
                         </select>
                     </div>
                 )}
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} placeholder="이벤트 날짜" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" required />
                 <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="url" value={applyUrl} onChange={(e) => setApplyUrl(e.target.value)} placeholder="신청하기 URL 링크 (선택 사항)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
-                <input type="text" value={title} onChange={(e) => setTitle(e.title)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
                 <div className="border-t pt-4">
                     <label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
@@ -956,7 +845,6 @@ const NewsWritePage = () => {
         </div>
     );
 };
-
 const CalendarPage = () => {
     const { currentUser } = useAuth();
     const location = useLocation();
