@@ -793,14 +793,14 @@ const handleLikeNews = async (newsItem) => {
 };
 
 // App.js 파일의 NewsWritePage 함수를 이 코드로 교체하세요.
-
 const NewsWritePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const itemToEdit = location.state?.itemToEdit;
 
-    // 1. adminSelectedCity를 useAuth() 훅에서 가져옵니다.
+    // 1. 관리자가 현재 보고 있는 지역 정보(adminSelectedCity)를 가져옵니다.
     const { currentUser, adminSelectedCity } = useAuth();
+
     const [title, setTitle] = useState(itemToEdit?.title || '');
     const [content, setContent] = useState(itemToEdit?.content || '');
     const [tags, setTags] = useState(itemToEdit?.tags?.join(', ') || '');
@@ -810,8 +810,6 @@ const NewsWritePage = () => {
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // 지역 선택 드롭다운 관련 로직은 모두 제거되었습니다.
-
     useEffect(() => {
         return () => {
             if (imagePreview && imagePreview.startsWith('blob:')) {
@@ -845,7 +843,6 @@ const NewsWritePage = () => {
             let imageUrl = itemToEdit?.imageUrl || null;
             let imagePath = itemToEdit?.imagePath || null;
             if (imageFile) {
-                // 이미지 업로드 로직 (기존과 동일)
                 const newImagePath = `news_images/${Date.now()}_${imageFile.name}`;
                 const storageRef = ref(storage, newImagePath);
                 await uploadBytes(storageRef, imageFile);
@@ -855,23 +852,20 @@ const NewsWritePage = () => {
 
             // 3. 관리자는 adminSelectedCity, 일반 사용자는 자신의 city를 사용합니다.
             const city = currentUser.isAdmin ? adminSelectedCity : currentUser.city;
-            // region(시/도) 정보는 city 정보를 기반으로 찾아냅니다. (예: 부안군 -> 전라북도)
-            // 이를 위한 간단한 헬퍼 함수가 필요하지만, 우선 city만으로도 기능 분리가 가능합니다.
-            // Firestore 규칙은 city 필드를 기반으로 작동하도록 단순화할 수 있습니다.
-            // 지금은 사용자의 region 정보를 그대로 사용하겠습니다.
-            const region = currentUser.region;
+            // region(시/도) 정보는 현재 로그인한 사용자의 정보를 따라갑니다. (더 정확하게 하려면 city로 region을 찾는 로직이 필요)
+            const region = currentUser.region; 
 
             const finalData = {
                 title, content, imageUrl, imagePath, date,
                 updatedAt: Timestamp.now(),
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 applyUrl,
-                region, // 관리자의 현재 region 또는 사용자의 region
-                city,   // 관리자의 현재 city 뷰 또는 사용자의 city
+                region,
+                city, // 관리자가 보고 있는 지역(city)으로 저장
             };
 
             if (itemToEdit) {
-                await updateDoc(doc(db, 'news', itemToEdit.id), finalData);
+                await updateDoc(doc(db, 'news', itemToedit.id), finalData);
             } else {
                 finalData.createdAt = Timestamp.now();
                 finalData.authorId = currentUser.uid;
@@ -886,7 +880,9 @@ const NewsWritePage = () => {
     };
 
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
+    
     return (
+        // JSX return 부분은 기존과 동일합니다. (지역 선택 드롭다운은 없는 상태)
         <div>
             <div className="p-4 flex items-center border-b">
                 <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button>
@@ -896,7 +892,6 @@ const NewsWritePage = () => {
                 </button>
             </div>
             <div className="p-4 space-y-4">
-                {/* 지역 선택 드롭다운이 여기서 완전히 제거되었습니다. */}
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} placeholder="이벤트 날짜" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" required />
                 <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="url" value={applyUrl} onChange={(e) => setApplyUrl(e.target.value)} placeholder="신청하기 URL 링크 (선택 사항)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
