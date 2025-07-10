@@ -605,16 +605,26 @@ const HomePage = () => {
         </div>
     );
 };
+// App.js 파일의 NewsPage 함수를 이 코드로 교체하세요.
+
 const NewsPage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
     const [buanNews, setBuanNews] = useState(null);
+    // ★ 1. likedNews 상태를 currentUser에서 가져오도록 수정합니다.
     const [likedNews, setLikedNews] = useState(currentUser?.likedNews || []);
 
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
     const [activeTag, setActiveTag] = useState('전체');
     const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
+
+    // ★ 2. currentUser가 바뀔 때마다 likedNews 상태도 업데이트합니다.
+    useEffect(() => {
+        if (currentUser) {
+            setLikedNews(currentUser.likedNews || []);
+        }
+    }, [currentUser]);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -637,58 +647,33 @@ const NewsPage = () => {
         return () => unsubscribe();
     }, [currentUser, adminSelectedCity]);
 
-   // App.js의 HomePage와 NewsPage에 있는 handleLikeNews 함수를 각각 이 코드로 교체하세요.
+    // ★ 3. handleLikeNews 함수를 컴포넌트 안으로 가져와서 올바르게 배치합니다.
+    const handleLikeNews = async (newsItem) => {
+        if (!currentUser || !newsItem) return;
+        const userRef = doc(db, 'users', currentUser.uid);
+        const isCurrentlyLiked = likedNews.includes(newsItem.id);
+        const eventsCollectionRef = collection(db, 'users', currentUser.uid, 'events');
 
-const handleLikeNews = async (newsItem) => {
-    if (!currentUser || !newsItem) return;
+        try {
+            await updateDoc(userRef, { likedNews: isCurrentlyLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id) });
 
-    const userRef = doc(db, 'users', currentUser.uid);
-    const isCurrentlyLiked = likedNews.includes(newsItem.id);
-    const eventsCollectionRef = collection(db, 'users', currentUser.uid, 'events');
-
-    try {
-        // --- 1. 사용자의 '좋아요' 목록 업데이트 ---
-        await updateDoc(userRef, {
-            likedNews: isCurrentlyLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id)
-        });
-
-        // --- 2. 달력 이벤트 추가 또는 삭제 ---
-        if (!isCurrentlyLiked && newsItem.date) {
-            // "좋아요"를 누른 경우: 달력에 일정을 추가합니다.
-            
-            // 중복 추가를 방지하기 위해 이미 해당 소식 ID로 등록된 일정이 있는지 확인합니다.
-            const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id), limit(1));
-            const existingEvents = await getDocs(eventQuery);
-
-            if (existingEvents.empty) {
-                // 기존 일정이 없으면 새로 추가합니다.
-                await addDoc(eventsCollectionRef, {
-                    title: newsItem.title,      // 소식 제목
-                    date: newsItem.date,        // 소식 날짜
-                    createdAt: Timestamp.now(),
-                    type: 'news',               // '소식' 타입으로 구분
-                    newsId: newsItem.id         // 어떤 소식에서 온 일정인지 ID 저장
-                });
+            if (!isCurrentlyLiked && newsItem.date) {
+                const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id), limit(1));
+                if ((await getDocs(eventQuery)).empty) {
+                    await addDoc(eventsCollectionRef, { title: newsItem.title, date: newsItem.date, createdAt: Timestamp.now(), type: 'news', newsId: newsItem.id });
+                }
+            } else if (isCurrentlyLiked && newsItem.date) {
+                const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id));
+                const eventsToDelete = await getDocs(eventQuery);
+                const batch = writeBatch(db);
+                eventsToDelete.forEach(eventDoc => batch.delete(eventDoc.ref));
+                await batch.commit();
             }
-        } else if (isCurrentlyLiked && newsItem.date) {
-            // "좋아요"를 취소한 경우: 달력에서 일정을 삭제합니다.
-            
-            // 삭제할 일정을 찾습니다.
-            const eventQuery = query(eventsCollectionRef, where("newsId", "==", newsItem.id));
-            const eventsToDelete = await getDocs(eventQuery);
-            
-            // 찾은 모든 일정을 삭제 처리합니다.
-            const batch = writeBatch(db);
-            eventsToDelete.forEach(eventDoc => {
-                batch.delete(eventDoc.ref);
-            });
-            await batch.commit();
+        } catch (error) {
+            console.error("좋아요 또는 달력 업데이트 중 오류:", error);
+            alert("작업 처리 중 오류가 발생했습니다.");
         }
-    } catch (error) {
-        console.error("좋아요 또는 달력 업데이트 중 오류:", error);
-        alert("작업 처리 중 오류가 발생했습니다.");
-    }
-};
+    };
 
     const handleDeleteNews = async (newsId, imagePath) => {
         if (!currentUser.isAdmin) return;
