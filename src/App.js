@@ -793,14 +793,13 @@ const handleLikeNews = async (newsItem) => {
 };
 
 // App.js 파일의 NewsWritePage 함수를 이 코드로 교체하세요.
+
 const NewsWritePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const itemToEdit = location.state?.itemToEdit;
 
-    // 1. 관리자가 현재 보고 있는 지역 정보(adminSelectedCity)를 가져옵니다.
-    const { currentUser, adminSelectedCity } = useAuth();
-
+    const { currentUser } = useAuth();
     const [title, setTitle] = useState(itemToEdit?.title || '');
     const [content, setContent] = useState(itemToEdit?.content || '');
     const [tags, setTags] = useState(itemToEdit?.tags?.join(', ') || '');
@@ -809,7 +808,37 @@ const NewsWritePage = () => {
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
+
+    // ★ 1. 관리자용 지역 선택 기능과 관련된 상태들을 다시 추가합니다.
+    const [allRegions, setAllRegions] = useState([]);
+    const [selectedPostRegion, setSelectedPostRegion] = useState(itemToEdit ? `${itemToEdit.region}|${itemToEdit.city}` : '');
+
+    // ★ 2. 관리자일 경우, 모든 지역 목록을 불러옵니다.
+    useEffect(() => {
+        if (currentUser?.isAdmin) {
+            const loadAllRegions = async () => {
+                const sidos = await fetchRegions();
+                const allCitiesPromises = sidos.map(sido => fetchCities(sido));
+                const allCitiesArrays = await Promise.all(allCitiesPromises);
+
+                const flattenedRegions = sidos.flatMap((sido, index) =>
+                    allCitiesArrays[index].map(city => ({
+                        region: sido,
+                        city: city,
+                        label: sido === city ? sido : `${sido} ${city}`
+                    }))
+                ).filter((v,i,a)=>a.findIndex(t=>(t.label === v.label))===i); // 중복 제거
+
+                setAllRegions(flattenedRegions);
+                // 수정 모드일 때 기존 지역을 설정합니다.
+                if (itemToEdit) {
+                    setSelectedPostRegion(`${itemToEdit.region}|${itemToEdit.city}`);
+                }
+            };
+            loadAllRegions();
+        }
+    }, [currentUser?.isAdmin, itemToEdit]);
+
     useEffect(() => {
         return () => {
             if (imagePreview && imagePreview.startsWith('blob:')) {
@@ -831,9 +860,9 @@ const NewsWritePage = () => {
             alert('날짜, 제목, 내용을 모두 입력해주세요.');
             return;
         }
-        // 2. 관리자일 경우, 현재 보고 있는 지역이 있는지 확인합니다.
-        if (currentUser.isAdmin && !adminSelectedCity) {
-            alert('소식을 등록할 지역이 지정되지 않았습니다. 프로필 페이지에서 지역 뷰를 먼저 선택해주세요.');
+        // ★ 3. 관리자일 경우 지역 선택 유효성을 검사합니다.
+        if (currentUser.isAdmin && !selectedPostRegion) {
+            alert('소식을 등록할 지역을 선택해주세요.');
             return;
         }
         if (isSubmitting) return;
@@ -850,18 +879,18 @@ const NewsWritePage = () => {
                 imagePath = newImagePath;
             }
 
-            // 3. 관리자는 adminSelectedCity, 일반 사용자는 자신의 city를 사용합니다.
-            const city = currentUser.isAdmin ? adminSelectedCity : currentUser.city;
-            // region(시/도) 정보는 현재 로그인한 사용자의 정보를 따라갑니다. (더 정확하게 하려면 city로 region을 찾는 로직이 필요)
-            const region = currentUser.region; 
+            // ★ 4. 선택된 지역 정보로 'region'과 'city'를 정확하게 분리합니다.
+            const [region, city] = currentUser.isAdmin
+                ? selectedPostRegion.split('|')
+                : [currentUser.region, currentUser.city];
 
             const finalData = {
                 title, content, imageUrl, imagePath, date,
                 updatedAt: Timestamp.now(),
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 applyUrl,
-                region,
-                city, // 관리자가 보고 있는 지역(city)으로 저장
+                region, // 정확하게 분리된 '시/도' 정보
+                city,   // 정확하게 분리된 '시/군/구' 정보
             };
 
             if (itemToEdit) {
@@ -882,7 +911,6 @@ const NewsWritePage = () => {
     const pageTitle = itemToEdit ? "소식 수정" : "소식 작성";
     
     return (
-        // JSX return 부분은 기존과 동일합니다. (지역 선택 드롭다운은 없는 상태)
         <div>
             <div className="p-4 flex items-center border-b">
                 <button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button>
@@ -892,10 +920,27 @@ const NewsWritePage = () => {
                 </button>
             </div>
             <div className="p-4 space-y-4">
+                {/* ★ 5. 관리자일 경우에만 지역 선택 드롭다운을 보여줍니다. */}
+                {currentUser.isAdmin && (
+                    <div>
+                        <label htmlFor="news-region-select" className="block text-sm font-medium text-gray-700 mb-1">게시 지역 선택</label>
+                        <select
+                            id="news-region-select"
+                            value={selectedPostRegion}
+                            onChange={(e) => setSelectedPostRegion(e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]"
+                        >
+                            <option value="">지역을 선택하세요</option>
+                            {allRegions.map(r => (
+                                <option key={r.label} value={`${r.region}|${r.city}`}>{r.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} placeholder="이벤트 날짜" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" required />
                 <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="url" value={applyUrl} onChange={(e) => setApplyUrl(e.target.value)} placeholder="신청하기 URL 링크 (선택 사항)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
+                <input type="text" value={title} onChange={(e) => setTitle(e.title)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
                 <div className="border-t pt-4">
                     <label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label>
