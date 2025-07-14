@@ -82,7 +82,7 @@ const StartPage = () => { const [loading, setLoading] = useState(false); const [
 const RegionSetupPage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
-    const [regions, setRegions] = useState([]); // [수정] regions는 이제 {name, code} 객체를 담습니다.
+    const [regions, setRegions] = useState([]); // regions는 이제 {name, code} 객체를 담습니다.
     const [cities, setCities] = useState([]);
     const [selectedRegion, setSelectedRegion] = useState('');
     const [selectedCity, setSelectedCity] = useState('');
@@ -99,20 +99,20 @@ const RegionSetupPage = () => {
 
     useEffect(() => {
         fetchRegions().then(data => {
-            setRegions(data); // [수정] data는 이제 [{name, code}, ...] 형태입니다.
+            setRegions(data); // data는 이제 [{name, code}, ...] 형태입니다.
             setApiLoading(false);
         });
     }, []);
 
     useEffect(() => {
         if (selectedRegion) {
-            // [수정] 선택된 region 이름으로 전체 regions 배열에서 해당 객체를 찾습니다.
+            // 선택된 region 이름으로 전체 regions 배열에서 해당 객체를 찾습니다.
             const regionData = regions.find(r => r.name === selectedRegion);
             if (regionData) {
                 setApiLoading(true);
                 setCities([]);
                 setSelectedCity('');
-                // [수정] fetchCities에 region 코드와 이름을 전달합니다.
+                // fetchCities에 region 코드와 이름을 전달합니다.
                 fetchCities(regionData.code, regionData.name).then(data => {
                     setCities(data);
                     if (data.length === 1) setSelectedCity(data[0]);
@@ -122,7 +122,7 @@ const RegionSetupPage = () => {
         } else {
             setCities([]);
         }
-    }, [selectedRegion, regions]); // [수정] regions를 의존성 배열에 추가합니다.
+    }, [selectedRegion, regions]); // regions를 의존성 배열에 추가합니다.
 
     const handleSaveRegion = async () => {
         if (!selectedRegion || !selectedCity) {
@@ -160,7 +160,7 @@ const RegionSetupPage = () => {
                 <div className="w-full max-w-xs space-y-4">
                     <select value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]">
                         <option value="">시/도 선택</option>
-                        {/* [수정] regions 배열이 객체를 포함하므로 key와 value를 올바르게 설정합니다. */}
+                        {/* regions 배열이 객체를 포함하므로 key와 value를 올바르게 설정합니다. */}
                         {regions.map(r => <option key={r.code} value={r.name}>{r.name}</option>)}
                     </select>
                     <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} disabled={!selectedRegion || apiLoading || cities.length <= 1} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200">
@@ -175,19 +175,177 @@ const RegionSetupPage = () => {
     );
 };
 
+const HomePage = () => {
+    const { currentUser, adminSelectedCity } = useAuth();
+    const navigate = useNavigate();
+    const [posts, setPosts] = useState(null);
+    const [buanNews, setBuanNews] = useState(null);
+    const [followingPosts, setFollowingPosts] = useState([]);
+    const [userEvents, setUserEvents] = useState({});
+    const [detailModalOpen, setDetailModalOpen] = useState(false);
+    const [selectedNews, setSelectedNews] = useState(null);
+    const displayCity = adminSelectedCity || (currentUser.isAdmin ? '전국' : currentUser.city);
+
+    const openDetailModal = (news) => {
+        setSelectedNews(news);
+        setDetailModalOpen(true);
+    };
+
+    useEffect(() => {
+        if (!currentUser || (!currentUser.isAdmin && !currentUser.city)) return;
+        const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city);
+        if (!currentUser.isAdmin && !targetCity) {
+            setPosts([]);
+            setBuanNews([]);
+            return;
+        }
+        const createSub = (coll, query, setData) => onSnapshot(query(collection(db, coll), ...query), s => setData(s.docs.map(d => ({id:d.id, ...d.data()}))), ()=>setData([]));
+        const q = (targetCity) ? [where("city", "==", targetCity), orderBy("createdAt", "desc")] : [orderBy("createdAt", "desc")];
+        const unsubs = [
+            createSub('posts', q, setPosts),
+            createSub('news', q, setBuanNews),
+            onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), s => {
+                const ev = {};
+                s.forEach(d => {const e={id:d.id, ...d.data()}; if(!ev[e.date])ev[e.date]=[]; ev[e.date].push(e);});
+                setUserEvents(ev);
+            })
+        ];
+        if (currentUser.following?.length > 0) {
+            unsubs.push(onSnapshot(query(collection(db, "posts"), where('authorId','in',currentUser.following.slice(0,10)), orderBy("createdAt","desc")), s => setFollowingPosts(s.docs.map(d=>({id:d.id,...d.data()})))));
+        } else {
+            setFollowingPosts([]);
+        }
+        return () => unsubs.forEach(un => un());
+    }, [currentUser, adminSelectedCity]);
+
+    const handleLikeNews = async (newsItem) => {
+        if (!currentUser || !newsItem) return;
+        const userRef = doc(db, 'users', currentUser.uid);
+        const isLiked = currentUser.likedNews?.includes(newsItem.id) || false;
+
+        try {
+            await updateDoc(userRef, { likedNews: isLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id) });
+
+            if (newsItem.date) {
+                const eventsRef = collection(db, `users/${currentUser.uid}/events`);
+                const q = query(eventsRef, where("newsId", "==", newsItem.id), limit(1));
+                const existingEvents = await getDocs(q);
+
+                if (!isLiked && existingEvents.empty) {
+                    await addDoc(eventsRef, { title: newsItem.title, date: newsItem.date, type: 'news', newsId: newsItem.id });
+                } else if (isLiked && !existingEvents.empty) {
+                    const batch = writeBatch(db);
+                    existingEvents.forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                }
+            }
+        } catch(e) {
+            console.error("Like/Calendar Error:", e);
+            alert("오류가 발생했습니다. 다시 시도해주세요.");
+        }
+    };
+    
+    const handleDeleteNews = async (id, path) => {
+        if (!currentUser.isAdmin || !window.confirm("삭제하시겠습니까?")) return;
+        try {
+            if (path) await deleteObject(ref(storage, path));
+            await deleteDoc(doc(db, 'news', id));
+            alert("삭제 완료");
+        } catch(e) {
+            alert(`삭제 오류: ${e.message}`);
+        }
+    };
+    
+    if (posts === null || buanNews === null) return <LoadingSpinner />;
+    
+    const popularPosts = posts ? [...posts].sort((a,b)=>(b.likes?.length||0)-(a.likes?.length||0)).slice(0,3) : [];
+    
+    return (
+        <div className="p-4 space-y-8">
+            <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
+                {selectedNews && (<div><h2>{selectedNews.title}</h2><p>{selectedNews.content}</p></div>)}
+            </Modal>
+            <section>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">지금 {displayCity}에서는</h2>
+                    <Link to="/news" className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></Link>
+                </div>
+                <div className="flex overflow-x-auto gap-4 pb-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {buanNews.length > 0 ? (
+                        buanNews.map(n => (
+                            <div key={n.id} className="w-4/5 md:w-3/5 shrink-0">
+                                <NewsCard {...{news: n, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: currentUser.likedNews?.includes(n.id)}} />
+                            </div>
+                        ))
+                    ) : (
+                        <div className="text-center text-gray-500 w-full p-8 bg-gray-100 rounded-lg">등록된 소식이 없습니다.</div>
+                    )}
+                </div>
+            </section>
+            <section>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">{displayCity} 달력</h2>
+                    <Link to="/calendar" className="text-sm font-medium text-gray-500 hover:text-gray-800">자세히 <ChevronRight className="inline-block" size={14} /></Link>
+                </div>
+                <Calendar events={userEvents} onDateClick={(date) => navigate('/calendar', { state: { date } })} />
+            </section>
+            <section>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">지금 인기있는 글</h2>
+                    <Link to="/board" className="text-sm font-medium text-gray-500 hover:text-gray-800">더 보기 <ChevronRight className="inline-block" size={14} /></Link>
+                </div>
+                <div className="space-y-3">
+                    {popularPosts.length > 0 ? (popularPosts.map(p => {
+                        const s = getCategoryStyle(p.category, p.city);
+                        return (
+                            <div key={p.id} onClick={() => navigate(`/post/${p.id}`)} className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3 cursor-pointer">
+                                <span className={`text-xs font-bold ${s.text} ${s.bg} px-2 py-1 rounded-md`}>{p.category}</span>
+                                <p className="truncate flex-1">{p.title}</p>
+                                <div className="flex items-center text-xs text-gray-400 gap-2"><Heart size={14} className="text-red-400"/><span>{p.likes?.length||0}</span></div>
+                            </div>
+                        );
+                    })) : (<p className="text-center text-gray-500 py-4">인기글이 없어요.</p>)}
+                </div>
+            </section>
+            <section>
+                <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-lg font-bold">팔로잉</h2>
+                </div>
+                <div className="space-y-3">
+                    {followingPosts.length > 0 ? (followingPosts.map(p => {
+                        const s = getCategoryStyle(p.category, p.city);
+                        return (
+                            <div key={p.id} onClick={() => navigate(`/post/${p.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className={`text-xs font-bold ${s.text} ${s.bg} px-2 py-1 rounded-md`}>{p.category}</span>
+                                    <h3 className="font-bold text-md truncate flex-1">{p.title}</h3>
+                                </div>
+                                <p className="text-gray-600 text-sm mb-3 truncate">{p.content}</p>
+                                <div className="flex justify-between items-center text-xs text-gray-500">
+                                    <div><span onClick={(e)=>{e.stopPropagation(); navigate(`/profile/${p.authorId}`);}} className="font-semibold cursor-pointer hover:underline">{p.authorName}</span><span className="mx-1">·</span><span>{timeSince(p.createdAt)}</span></div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-1"><Heart size={14} className={p.likes?.includes(currentUser.uid)?'text-red-500 fill-current':'text-gray-400'}/><span>{p.likes?.length||0}</span></div>
+                                        <div className="flex items-center gap-1"><MessageCircle size={14} className="text-gray-400"/><span>{p.commentCount||0}</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })) : (<p className="text-center text-gray-500 py-4">팔로우하는 사용자의 글이 없습니다.</p>)}
+                </div>
+            </section>
+        </div>
+    );
+};
+
 const NewsPage = () => {
     const { currentUser, adminSelectedCity } = useAuth();
     const navigate = useNavigate();
     const [newsList, setNewsList] = useState(null);
-    // [삭제] const [likedNews, setLikedNews] = useState(currentUser?.likedNews || []);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedNews, setSelectedNews] = useState(null);
     const [activeTag, setActiveTag] = useState('전체');
     const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지'];
     const displayCity = adminSelectedCity || (currentUser?.isAdmin ? '전체' : currentUser?.city);
-
-    // [삭제] likedNews를 위한 useEffect 삭제
-    // useEffect(() => { if (currentUser) setLikedNews(currentUser.likedNews || []); }, [currentUser]);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -205,7 +363,6 @@ const NewsPage = () => {
         return () => unsub();
     }, [currentUser, adminSelectedCity]);
 
-    // [수정] handleLikeNews 함수 로직 개선
     const handleLikeNews = async (newsItem) => {
         if (!currentUser || !newsItem) return;
         const userRef = doc(db, 'users', currentUser.uid);
@@ -280,7 +437,6 @@ const NewsPage = () => {
             <div className="space-y-4">
                 {filteredNews.length > 0 ? (
                     filteredNews.map((news) => (
-                        // [수정] isLiked prop을 currentUser에서 직접 가져옵니다.
                         <NewsCard key={news.id} {...{news, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: currentUser.likedNews?.includes(news.id)}} />
                     ))
                 ) : (
@@ -293,7 +449,6 @@ const NewsPage = () => {
     );
 };
 
-const NewsPage = () => { const { currentUser, adminSelectedCity } = useAuth(); const navigate = useNavigate(); const [newsList, setNewsList] = useState(null); const [likedNews, setLikedNews] = useState(currentUser?.likedNews || []); const [detailModalOpen, setDetailModalOpen] = useState(false); const [selectedNews, setSelectedNews] = useState(null); const [activeTag, setActiveTag] = useState('전체'); const tags = ['전체', '교육', '문화', '청년', '농업', '안전', '운동', '행사', '복지']; const displayCity = adminSelectedCity || (currentUser?.isAdmin ? '전체' : currentUser?.city); useEffect(() => { if (currentUser) setLikedNews(currentUser.likedNews || []); }, [currentUser]); useEffect(() => { if (!currentUser) return; const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city); if (!currentUser.isAdmin && !targetCity) { setNewsList([]); return; } const baseQuery = targetCity ? [where("city", "==", targetCity)] : []; const q = query(collection(db, "news"), ...baseQuery, orderBy("createdAt", "desc")); const unsub = onSnapshot(q, (s) => setNewsList(s.docs.map(d => ({ id: d.id, ...d.data() }))), (e) => { console.error("Error fetching news:", e); setNewsList([]); }); return () => unsub(); }, [currentUser, adminSelectedCity]); const handleLikeNews = async (newsItem) => { if (!currentUser || !newsItem) return; const userRef = doc(db,'users',currentUser.uid); const isLiked = likedNews.includes(newsItem.id); try {await updateDoc(userRef, {likedNews: isLiked ? arrayRemove(newsItem.id) : arrayUnion(newsItem.id)}); if (newsItem.date) {const eventsRef = collection(db,`users/${currentUser.uid}/events`); const q = query(eventsRef, where("newsId","==",newsItem.id), limit(1)); if (!isLiked && (await getDocs(q)).empty) await addDoc(eventsRef, {title: newsItem.title, date: newsItem.date, type: 'news', newsId: newsItem.id}); else if(isLiked) {const batch = writeBatch(db); (await getDocs(q)).forEach(d => batch.delete(d.ref)); await batch.commit();}}} catch(e) {console.error("Like/Calendar Error:", e); alert("작업 처리 중 오류 발생");}}; const handleDeleteNews = async (newsId, imagePath) => { if (!currentUser.isAdmin || !window.confirm("정말로 이 소식을 삭제하시겠습니까?")) return; try { if (imagePath) await deleteObject(ref(storage, imagePath)); await deleteDoc(doc(db, 'news', newsId)); alert("소식이 삭제되었습니다."); } catch (error) { alert(`소식 삭제 중 오류: ${error.message}`); } }; const openDetailModal = (news) => { setSelectedNews(news); setDetailModalOpen(true); }; if (newsList === null) return <LoadingSpinner />; const filteredNews = activeTag === '전체' ? newsList : newsList.filter(news => news.tags?.includes(activeTag)); const pageTitle = displayCity === '전체' ? '전체 소식' : `${displayCity} 소식`; return (<div className="p-4"><h1 className="text-2xl font-bold mb-4">{pageTitle}</h1>{currentUser.isAdmin && (<button onClick={() => navigate('/news/write', { state: { city: displayCity } })} className="w-full mb-4 bg-[#00462A] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#003a22] shadow-lg flex items-center justify-center gap-2"><PlusCircle size={20} /> {displayCity === '전체' ? '새 소식 작성' : `${displayCity} 소식 작성`}</button>)}<div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>{tags.map(tag => (<button key={tag} onClick={() => setActiveTag(tag)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${ activeTag === tag ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}>{tag}</button>))}</div><Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>{selectedNews && (<div><h2 className="text-2xl font-bold mb-4">{selectedNews.title}</h2><p className="text-gray-700 whitespace-pre-wrap">{selectedNews.content}</p></div>)}</Modal><div className="space-y-4">{filteredNews.length > 0 ? (filteredNews.map((news) => (<NewsCard key={news.id} {...{news, isAdmin: currentUser.isAdmin, openDetailModal, handleDeleteNews, handleLikeNews, isLiked: likedNews.includes(news.id)}} />))) : (<div className="text-center text-gray-500 py-10 p-8 bg-gray-100 rounded-lg">{activeTag === '전체' ? '등록된 소식이 없습니다.' : `선택한 태그에 해당하는 소식이 없습니다.`}</div>)}</div></div>);};
 const NewsWritePage = () => { const navigate = useNavigate(); const location = useLocation(); const itemToEdit = location.state?.itemToEdit; const initialCity = location.state?.city; const { currentUser } = useAuth(); const [title, setTitle] = useState(itemToEdit?.title || ''); const [content, setContent] = useState(itemToEdit?.content || ''); const [tags, setTags] = useState(itemToEdit?.tags?.join(', ') || ''); const [applyUrl, setApplyUrl] = useState(itemToEdit?.applyUrl || ''); const [date, setDate] = useState(itemToEdit?.date || ''); const [imageFile, setImageFile] = useState(null); const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null); const [isSubmitting, setIsSubmitting] = useState(false); const [postRegion, setPostRegion] = useState(''); const [postCity, setPostCity] = useState(''); useEffect(() => { const city = itemToEdit?.city || initialCity; if(city && city !== '전체') { setPostCity(city); getAllRegionCityMap().then(map => setPostRegion(map.cityToRegion[city] || '')); } }, [itemToEdit, initialCity]); const handleImageChange = (e) => { if (e.target.files[0]) { const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file)); }}; const handleSubmit = async () => { if (!title.trim() || !content.trim() || !date) { alert('날짜, 제목, 내용을 모두 입력해주세요.'); return; } if (currentUser.isAdmin && (!postRegion || !postCity)) { alert('게시할 지역 정보가 없습니다. 소식 페이지에서 글쓰기를 시작해주세요.'); return; } if (isSubmitting) return; setIsSubmitting(true); try { let imageUrl = itemToEdit?.imageUrl || null, imagePath = itemToEdit?.imagePath || null; if (imageFile) { if(itemToEdit?.imagePath) await deleteObject(ref(storage, itemToEdit.imagePath)); const newImagePath = `news_images/${Date.now()}_${imageFile.name}`; const storageRef = ref(storage, newImagePath); await uploadBytes(storageRef, imageFile); imageUrl = await getDownloadURL(storageRef); imagePath = newImagePath; } const finalData = { title, content, imageUrl, imagePath, date, updatedAt: Timestamp.now(), tags: tags.split(',').map(t=>t.trim()).filter(Boolean), applyUrl, region: postRegion, city: postCity }; if (itemToEdit) await updateDoc(doc(db, 'news', itemToEdit.id), finalData); else await addDoc(collection(db, 'news'), { ...finalData, createdAt: Timestamp.now(), authorId: currentUser.uid }); navigate('/news'); } catch (error) { alert(`오류: ${error.message}`); } finally { setIsSubmitting(false); } }; return (<div><div className="p-4 flex items-center border-b"><button onClick={() => navigate(-1)} className="p-2 -ml-2"><ArrowLeft /></button><h2 className="text-lg font-bold mx-auto">{itemToEdit ? "소식 수정" : "소식 작성"}</h2><button onClick={handleSubmit} disabled={isSubmitting} className="text-lg font-bold text-[#00462A] disabled:text-gray-400">{isSubmitting ? '등록 중' : '완료'}</button></div><div className="p-4 space-y-4">{currentUser.isAdmin && (postRegion || postCity) && (<div className="p-3 bg-green-50 border-l-4 border-green-500 rounded-r-lg"><p className="text-sm font-semibold text-gray-700">작성 지역: <span className="text-green-800">{postRegion} {postCity}</span></p></div>)}<input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" /><input type="text" value={tags} onChange={e=>setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" /><input type="url" value={applyUrl} onChange={e=>setApplyUrl(e.target.value)} placeholder="신청하기 URL 링크 (선택 사항)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" /><input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" /><textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" /><div className="border-t pt-4"><label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]"><ImageUp size={20} /><span>사진 추가</span></label><input id="image-upload-news" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />{imagePreview && (<div className="mt-4 relative w-32 h-32"><img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" /><button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full p-1"><X size={14} /></button></div>)}</div></div></div>); };
 const CalendarPage = () => { const { currentUser } = useAuth(); const location = useLocation(); const [userEvents, setUserEvents] = useState({}); const [isModalOpen, setIsModalOpen] = useState(false); const [selectedDate, setSelectedDate] = useState(null); const [eventTitle, setEventTitle] = useState(''); useEffect(() => { if (!currentUser) return; const unsub = onSnapshot(query(collection(db, `users/${currentUser.uid}/events`)), s => { const ev = {}; s.docs.forEach(d => { const e = { id: d.id, ...d.data() }; if (!ev[e.date]) ev[e.date] = []; ev[e.date].push(e); }); setUserEvents(ev); }); return unsub; }, [currentUser]); useEffect(() => { if(location.state?.date) { setSelectedDate(location.state.date); setIsModalOpen(true); } }, [location.state]); const handleDateClick = (date) => { setSelectedDate(date); setIsModalOpen(true); }; const handleAddEvent = async () => { if (!eventTitle.trim()) { alert("일정 제목을 입력해주세요."); return; } try { await addDoc(collection(db, `users/${currentUser.uid}/events`), { title: eventTitle, date: selectedDate, type: 'user', createdAt: Timestamp.now() }); setIsModalOpen(false); setEventTitle(''); } catch(e) { console.error("Error adding event: ", e); alert("일정 추가 중 오류 발생"); } }; const eventsForSelectedDate = userEvents[selectedDate] || []; return (<div className="p-4"><Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}><div className="p-2"><h3 className="text-lg font-bold mb-4">{selectedDate}</h3><div className="mb-4"><input type="text" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="새로운 일정" className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#00462A] focus:border-[#00462A]" /></div><button onClick={handleAddEvent} className="w-full bg-[#00462A] text-white font-bold py-2 px-4 rounded-lg hover:bg-[#003a22]">저장</button><div className="mt-6"><h4 className="font-bold mb-2">이 날의 일정:</h4>{eventsForSelectedDate.length > 0 ? (<ul className="list-disc list-inside space-y-1">{eventsForSelectedDate.map(event => <li key={event.id}>{event.title}</li>)}</ul>) : (<p className="text-gray-500">등록된 일정이 없습니다.</p>)}</div></div></Modal><Calendar events={userEvents} onDateClick={handleDateClick} /></div>); };
 const BoardPage = () => { const { currentUser, adminSelectedCity } = useAuth(); const navigate = useNavigate(); const [posts, setPosts] = useState(null); const [filter, setFilter] = useState('전체'); const dynamicMomCategory = currentUser?.city ? `${currentUser.city}맘` : '마을맘'; const categories = ['전체', '일상', '친목', '10대', '청년', '중년', dynamicMomCategory, '질문', '기타']; useEffect(() => { if (!currentUser) return; const targetCity = adminSelectedCity || (currentUser.isAdmin ? null : currentUser.city); if (!currentUser.isAdmin && !targetCity) { setPosts([]); return; } let qCons = []; if (targetCity) qCons.push(where("city", "==", targetCity)); if (filter !== '전체') qCons.push(where("category", "==", filter)); const q = query(collection(db, "posts"), ...qCons, orderBy("createdAt", "desc"), limit(50)); const unsub = onSnapshot(q, s => setPosts(s.docs.map(d => ({ id: d.id, ...d.data() }))), e => { console.error("Error fetching posts: ", e); setPosts([]); }); return unsub; }, [filter, currentUser, adminSelectedCity]); if (posts === null) return <LoadingSpinner />; return (<div className="p-4 pb-20"><div className="flex space-x-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>{categories.map(cat => (<button key={cat} onClick={() => setFilter(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${filter === cat ? 'bg-[#00462A] text-white' : 'bg-gray-200 text-gray-700'}`}>{cat}</button>))}</div><div className="space-y-3">{posts.length > 0 ? (posts.map(post => { const style = getCategoryStyle(post.category, post.city); return (<div key={post.id} onClick={() => navigate(`/post/${post.id}`)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer"><div className="flex items-center gap-2 mb-2"><span className={`text-xs font-bold ${style.text} ${style.bg} px-2 py-1 rounded-md`}>{post.category}</span><h3 className="font-bold text-md truncate flex-1">{post.title}</h3></div><p className="text-gray-600 text-sm mb-3 truncate">{post.content}</p><div className="flex justify-between items-center text-xs text-gray-500"><div><span onClick={(e) => { e.stopPropagation(); navigate(`/profile/${post.authorId}`); }} className="font-semibold cursor-pointer hover:underline">{post.authorName}</span><span className="mx-1">·</span><span>{timeSince(post.createdAt)}</span></div><div className="flex items-center gap-3"><div className="flex items-center gap-1"><Heart size={14} className={post.likes?.includes(currentUser.uid) ? 'text-red-500 fill-current' : 'text-gray-400'} /><span>{post.likes?.length || 0}</span></div><div className="flex items-center gap-1"><MessageCircle size={14} className="text-gray-400"/><span>{post.commentCount || 0}</span></div></div></div></div>); })) : ( <p className="text-center text-gray-500 py-10">해당 카테고리에 글이 없습니다.</p> )}</div><button onClick={() => navigate('/post/write')} className="fixed bottom-24 right-5 bg-[#00462A] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-[#003a22] hover:scale-110"><PlusCircle size={28} /></button></div>);};
