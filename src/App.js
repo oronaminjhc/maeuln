@@ -82,7 +82,7 @@ const StartPage = () => { const [loading, setLoading] = useState(false); const [
 const RegionSetupPage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
-    const [regions, setRegions] = useState([]); // regions는 이제 {name, code} 객체를 담습니다.
+    const [regions, setRegions] = useState([]); // [수정] regions는 이제 {name, code} 객체를 담습니다.
     const [cities, setCities] = useState([]);
     const [selectedRegion, setSelectedRegion] = useState('');
     const [selectedCity, setSelectedCity] = useState('');
@@ -99,21 +99,21 @@ const RegionSetupPage = () => {
 
     useEffect(() => {
         fetchRegions().then(data => {
-            setRegions(data); // data는 이제 [{name, code}, ...] 형태입니다.
+            setRegions(data); // [수정] data는 이제 [{name, code}, ...] 형태입니다.
             setApiLoading(false);
         });
     }, []);
 
     useEffect(() => {
         if (selectedRegion) {
-            // 선택된 region 이름으로 전체 regions 배열에서 해당 객체를 찾습니다.
+            // [수정] 선택된 region 이름으로 전체 regions 배열에서 해당 객체를 찾습니다.
             const regionData = regions.find(r => r.name === selectedRegion);
             if (regionData) {
                 setApiLoading(true);
                 setCities([]);
                 setSelectedCity('');
-                // fetchCities에 region 코드와 이름을 전달합니다.
-                fetchCities(regionData.code, regionData.name).then(data => {
+                // [수정] fetchCities에 region 코드를 전달합니다.
+                fetchCities(regionData.code).then(data => {
                     setCities(data);
                     if (data.length === 1) setSelectedCity(data[0]);
                     setApiLoading(false);
@@ -122,7 +122,7 @@ const RegionSetupPage = () => {
         } else {
             setCities([]);
         }
-    }, [selectedRegion, regions]); // regions를 의존성 배열에 추가합니다.
+    }, [selectedRegion, regions]); // [수정] regions를 의존성 배열에 추가합니다.
 
     const handleSaveRegion = async () => {
         if (!selectedRegion || !selectedCity) {
@@ -160,10 +160,10 @@ const RegionSetupPage = () => {
                 <div className="w-full max-w-xs space-y-4">
                     <select value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A]">
                         <option value="">시/도 선택</option>
-                        {/* regions 배열이 객체를 포함하므로 key와 value를 올바르게 설정합니다. */}
+                        {/* [수정] regions 배열이 객체를 포함하므로 key와 value를 올바르게 설정합니다. */}
                         {regions.map(r => <option key={r.code} value={r.name}>{r.name}</option>)}
                     </select>
-                    <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} disabled={!selectedRegion || apiLoading || cities.length <= 1} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200">
+                    <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} disabled={!selectedRegion || apiLoading || cities.length === 0} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00462A] disabled:bg-gray-200">
                         <option value="">시/군 선택</option>
                         {apiLoading && selectedRegion ? <option>불러오는 중...</option> : cities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
