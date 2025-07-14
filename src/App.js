@@ -16,19 +16,30 @@ import { ADMIN_UID, categoryStyles, getCategoryStyle } from './constants';
 
 // Firebase 초기화
 const firebaseConfig = {
-    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.REACT_APP_FIREBASE_APP_ID,
-    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "demo-api-key",
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "demo.firebaseapp.com",
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "demo-project",
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "demo.appspot.com",
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "123456789",
+    appId: process.env.REACT_APP_FIREBASE_APP_ID || "demo-app-id",
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || "demo-measurement-id"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+let app, auth, db, storage;
+
+try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    storage = getStorage(app);
+} catch (error) {
+    console.error("Firebase 초기화 오류:", error);
+    // 기본값으로 초기화
+    app = null;
+    auth = null;
+    db = null;
+    storage = null;
+}
 
 // =================================================================
 // ▼▼▼ 인증 Context ▼▼▼
@@ -41,8 +52,21 @@ const AuthProvider = ({ children }) => {
     const [adminSelectedCity, setAdminSelectedCity] = useState(null);
 
     useEffect(() => {
+        if (!auth) {
+            console.error("Firebase 인증이 초기화되지 않았습니다.");
+            setLoading(false);
+            return;
+        }
+        
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
+                if (!db) {
+                    console.error("Firestore가 초기화되지 않았습니다.");
+                    setCurrentUser({ ...user, isFirestoreDataLoaded: true });
+                    setLoading(false);
+                    return;
+                }
+                
                 const userRef = doc(db, "users", user.uid);
                 const userUnsubscribe = onSnapshot(userRef, (userSnap) => {
                     let finalUser = { ...user, isFirestoreDataLoaded: true };
@@ -187,6 +211,9 @@ const StartPage = () => {
         setLoading(true);
         setError('');
         try {
+            if (!auth) {
+                throw new Error("Firebase 인증이 초기화되지 않았습니다.");
+            }
             const provider = new OAuthProvider('oidc.kakao.com');
             provider.setCustomParameters({ prompt: 'select_account' });
             await signInWithPopup(auth, provider);
