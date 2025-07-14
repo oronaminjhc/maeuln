@@ -813,6 +813,33 @@ const BoardPage = () => {
     );
 };
 
+const ClubListPage = ({ clubs }) => {
+    const navigate = useNavigate();
+    
+    if (!clubs) return <SkeletonUI />;
+    if (clubs.length === 0) return <EmptyState icon={<Users size={48} />} message="개설된 모임이 없습니다." />;
+
+    return (
+        <div className="space-y-3">
+            {clubs.map(club => (
+                <div key={club.id} onClick={() => navigate(`/club/${club.id}`)} className="bg-white p-4 rounded-xl shadow-sm border cursor-pointer flex items-center gap-4 hover:bg-gray-50 transition-colors">
+                    <img src={club.photoURL} alt={club.name} className="w-16 h-16 rounded-lg object-cover bg-gray-200 shrink-0" />
+                    <div className="flex-1 overflow-hidden">
+                        <h3 className="font-bold text-lg">{club.name}</h3>
+                        <p className="text-sm text-gray-500 truncate">{club.description}</p>
+                        <div className="text-xs text-gray-400 mt-1 flex items-center">
+                            {club.password && <Lock size={12} className="mr-1" />}
+                            <span>멤버 {club.members?.length || 0}명</span>
+                            <span className="mx-1">·</span>
+                            <span className="hover:underline">{club.creatorName}</span>
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
 const CalendarPage = () => {
     const { currentUser } = useAuth();
     const location = useLocation();
