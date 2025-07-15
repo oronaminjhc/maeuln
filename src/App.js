@@ -2179,11 +2179,8 @@ const ChatPage = () => {
     const { chatId } = useParams();
     const location = useLocation();
     
-    // recipientId가 state에 없을 경우를 대비하여 chatId에서 파싱합니다.
     const getRecipientId = () => {
-        if (location.state?.recipientId) {
-            return location.state.recipientId;
-        }
+        if (location.state?.recipientId) return location.state.recipientId;
         if (currentUser?.uid && chatId) {
             const ids = chatId.split('_');
             return ids.find(id => id !== currentUser.uid);
@@ -2205,20 +2202,12 @@ const ChatPage = () => {
             setIsAllowed(false);
             return;
         }
-        const chatRef = doc(db, 'chats', chatId);
-        const messagesRef = collection(chatRef, 'messages');
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
         const q = query(messagesRef, orderBy('createdAt', 'asc'));
         
-        const messagesUnsub = onSnapshot(q, s => setMessages(s.docs.map(d => ({ id: d.id, ...d.data() }))), () => setLoading(false));
+        const unsub = onSnapshot(q, s => setMessages(s.docs.map(d => ({ id: d.id, ...d.data() }))), () => setLoading(false));
         
-        const chatUnsub = onSnapshot(chatRef, chatSnap => {
-            if (chatSnap.exists() && !chatSnap.data().members?.includes(currentUser.uid)) {
-                setIsAllowed(false);
-            }
-            setLoading(false);
-        });
-
-        return () => { messagesUnsub(); chatUnsub(); };
+        return () => unsub();
     }, [chatId, currentUser, recipientId]);
 
     useEffect(() => {
@@ -2229,23 +2218,49 @@ const ChatPage = () => {
         e.preventDefault();
         if (!newMessage.trim() || !recipientId) return;
 
+        // ================================================================
+        // ▼▼▼▼▼ [진단 코드] 보내주신 점검 코드를 여기에 추가했습니다 ▼▼▼▼▼
+        // ================================================================
+        try {
+            console.log("--- 채팅방 권한 점검 시작 ---");
+            const chatRef = doc(db, "chats", chatId);
+            const chatSnap = await getDoc(chatRef);
+
+            if (!chatSnap.exists()) {
+              console.error("❌ 점검 결과: 채팅방 문서가 존재하지 않습니다. 첫 메시지를 보내기 전에 채팅방부터 생성해야 합니다.");
+            } else {
+              const data = chatSnap.data();
+              const members = data.members || [];
+              const uid = auth.currentUser?.uid;
+
+              console.log("✅ 채팅방 members:", members);
+              console.log("🧑 현재 유저 UID:", uid);
+              console.log("멤버 포함 여부:", members.includes(uid) ? "✅ 포함됨 (정상)" : "❌ 포함 안 됨 (오류 원인!)");
+            }
+            console.log("--- 채팅방 권한 점검 종료 ---");
+        } catch (error) {
+            console.error("점검 코드 실행 중 오류:", error);
+        }
+        // ================================================================
+        // ▲▲▲▲▲ [진단 코드] 여기까지 추가했습니다 ▲▲▲▲▲
+        // ================================================================
+
+
+        // 메시지 전송 로직 (이전과 동일)
         const chatRef = doc(db, 'chats', chatId);
         const messagesColRef = collection(chatRef, 'messages');
         
         try {
-            // 1. 채팅방 문서가 존재하는지 확인합니다.
             const chatDoc = await getDoc(chatRef);
 
-            // 2. 채팅방이 없다면, 먼저 채팅방부터 생성합니다.
             if (!chatDoc.exists()) {
                 await setDoc(chatRef, {
                     members: [currentUser.uid, recipientId],
                     createdAt: Timestamp.now(),
-                    lastMessage: null // 처음에는 lastMessage를 null로 설정
+                    lastMessage: null
                 });
             }
 
-            // 3. 이제 채팅방이 확실히 존재하므로, 메시지를 추가합니다.
             const messageData = { 
                 text: newMessage, 
                 senderId: currentUser.uid, 
@@ -2253,14 +2268,13 @@ const ChatPage = () => {
             };
             await addDoc(messagesColRef, messageData);
             
-            // 4. 마지막 메시지 정보를 업데이트합니다.
             await updateDoc(chatRef, { lastMessage: messageData });
 
             setNewMessage('');
 
         } catch (error) {
             console.error("Send message error:", error);
-            alert("메시지 전송에 실패했습니다. 권한을 확인해주세요.");
+            alert("메시지 전송에 실패했습니다. 개발자 콘솔의 '점검 결과'를 확인해주세요.");
         }
     };
 
