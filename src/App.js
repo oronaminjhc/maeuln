@@ -213,21 +213,20 @@ const StartPage = () => {
 const RegionSetupPage = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
+    
+    // 지역 선택을 위한 상태
     const [regions, setRegions] = useState([]);
     const [cities, setCities] = useState([]);
     const [selectedRegion, setSelectedRegion] = useState('');
     const [selectedCity, setSelectedCity] = useState('');
+
+    // 로딩 및 에러 상태
     const [loading, setLoading] = useState(false);
     const [apiLoading, setApiLoading] = useState(true);
     const [error, setError] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
-    useEffect(() => {
-        if (isSaving && currentUser?.city) {
-            navigate('/home');
-        }
-    }, [currentUser, isSaving, navigate]);
-
+    // 1. 컴포넌트가 로드되면 전체 시/도 목록을 불러옵니다.
     useEffect(() => {
         fetchRegions().then(data => {
             setRegions(data);
@@ -235,23 +234,39 @@ const RegionSetupPage = () => {
         });
     }, []);
 
+    // 2. [핵심 수정] 시/도를 선택할 때마다 실행됩니다.
     useEffect(() => {
-        if (selectedRegion) {
-            const regionData = regions.find(r => r.name === selectedRegion);
-            if (regionData) {
-                setApiLoading(true);
-                setCities([]);
-                setSelectedCity('');
-                fetchCities(regionData.code).then(data => {
-                    setCities(data);
-                    if (data.length === 1) setSelectedCity(data[0]);
-                    setApiLoading(false);
-                });
-            }
-        } else {
+        // 시/도가 선택되지 않았으면 시/군 목록을 비웁니다.
+        if (!selectedRegion) {
             setCities([]);
+            setSelectedCity('');
+            return;
+        }
+
+        const regionData = regions.find(r => r.name === selectedRegion);
+        if (regionData) {
+            setApiLoading(true);
+            // fetchCities 함수에 code와 name을 모두 전달합니다.
+            fetchCities(regionData.code, regionData.name).then(data => {
+                setCities(data);
+                // 만약 시/군 목록이 하나뿐이면 (광역시 등) 자동으로 선택합니다.
+                if (data.length === 1) {
+                    setSelectedCity(data[0]);
+                } else {
+                    setSelectedCity('');
+                }
+                setApiLoading(false);
+            });
         }
     }, [selectedRegion, regions]);
+    
+    // 저장 후 페이지 이동 로직
+    useEffect(() => {
+        if (isSaving && currentUser?.city) {
+            navigate('/home');
+        }
+    }, [currentUser, isSaving, navigate]);
+
 
     const handleSaveRegion = async () => {
         if (!selectedRegion || !selectedCity) {
@@ -262,13 +277,14 @@ const RegionSetupPage = () => {
         setError('');
         setIsSaving(true);
         try {
+            // 사용자의 첫 지역 설정이므로 Firestore에 저장합니다.
             await setDoc(doc(db, "users", currentUser.uid), {
                 displayName: currentUser.displayName,
                 email: currentUser.email,
                 photoURL: currentUser.photoURL,
                 region: selectedRegion,
                 city: selectedCity,
-                town: '',
+                town: '', // 상세 동네는 프로필 수정에서 입력
                 createdAt: Timestamp.now()
             }, { merge: true });
         } catch (e) {
