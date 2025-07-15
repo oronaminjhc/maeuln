@@ -13,6 +13,7 @@ import { Home, Newspaper, LayoutGrid, Users, TicketPercent, ArrowLeft, Heart, Me
 import { fetchRegions, fetchCities, getAllRegionCityMap } from './services/region.service';
 import { timeSince } from './utils/timeSince';
 import { ADMIN_UID, categoryStyles, getCategoryStyle } from './constants';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // Firebase 초기화
 const firebaseConfig = {
@@ -40,11 +41,6 @@ try {
     db = null;
     storage = null;
 }
-
-// =================================================================
-// ▼▼▼ 인증 Context ▼▼▼
-// =================================================================
-import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // =================================================================
 // ▼▼▼ 로고, 헬퍼, 공용 컴포넌트 ▼▼▼
