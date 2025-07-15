@@ -2178,7 +2178,21 @@ const ChatPage = () => {
     const { currentUser } = useAuth();
     const { chatId } = useParams();
     const location = useLocation();
-    const recipientId = location.state?.recipientId;
+    
+    // recipientId가 state에 없을 경우를 대비하여 chatId에서 파싱합니다.
+    const getRecipientId = () => {
+        if (location.state?.recipientId) {
+            return location.state.recipientId;
+        }
+        if (currentUser?.uid && chatId) {
+            const ids = chatId.split('_');
+            return ids.find(id => id !== currentUser.uid);
+        }
+        return null;
+    };
+    
+    const recipientId = getRecipientId();
+
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [isAllowed, setIsAllowed] = useState(true);
@@ -2196,6 +2210,7 @@ const ChatPage = () => {
         const q = query(messagesRef, orderBy('createdAt', 'asc'));
         
         const messagesUnsub = onSnapshot(q, s => setMessages(s.docs.map(d => ({ id: d.id, ...d.data() }))), () => setLoading(false));
+        
         const chatUnsub = onSnapshot(chatRef, chatSnap => {
             if (chatSnap.exists() && !chatSnap.data().members?.includes(currentUser.uid)) {
                 setIsAllowed(false);
@@ -2213,22 +2228,39 @@ const ChatPage = () => {
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!newMessage.trim() || !recipientId) return;
-        const msg = { text: newMessage, senderId: currentUser.uid, createdAt: Timestamp.now() };
+
         const chatRef = doc(db, 'chats', chatId);
+        const messagesColRef = collection(chatRef, 'messages');
+        
         try {
+            // 1. 채팅방 문서가 존재하는지 확인합니다.
             const chatDoc = await getDoc(chatRef);
-            const batch = writeBatch(db);
+
+            // 2. 채팅방이 없다면, 먼저 채팅방부터 생성합니다.
             if (!chatDoc.exists()) {
-                batch.set(chatRef, { members: [currentUser.uid, recipientId], lastMessage: msg });
-            } else {
-                batch.update(chatRef, { lastMessage: msg });
+                await setDoc(chatRef, {
+                    members: [currentUser.uid, recipientId],
+                    createdAt: Timestamp.now(),
+                    lastMessage: null // 처음에는 lastMessage를 null로 설정
+                });
             }
-            batch.set(doc(collection(chatRef, 'messages')), msg);
-            await batch.commit();
+
+            // 3. 이제 채팅방이 확실히 존재하므로, 메시지를 추가합니다.
+            const messageData = { 
+                text: newMessage, 
+                senderId: currentUser.uid, 
+                createdAt: Timestamp.now() 
+            };
+            await addDoc(messagesColRef, messageData);
+            
+            // 4. 마지막 메시지 정보를 업데이트합니다.
+            await updateDoc(chatRef, { lastMessage: messageData });
+
             setNewMessage('');
+
         } catch (error) {
             console.error("Send message error:", error);
-            alert("메시지 전송 실패");
+            alert("메시지 전송에 실패했습니다. 권한을 확인해주세요.");
         }
     };
 
