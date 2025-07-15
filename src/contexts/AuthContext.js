@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useContext, createContext } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-// ▼▼▼▼▼ [수정] 경로를 @/ 별칭으로 변경합니다. ▼▼▼▼▼
-import { auth, db } from '@/firebase.config'; 
+// ▼▼▼▼▼ [수정] 상대 경로로 정확하게 변경합니다. ▼▼▼▼▼
+import { auth, db } from '../firebase.config'; 
 // ▲▲▲▲▲ 경로 수정 완료 ▲▲▲▲▲
 
 const AuthContext = createContext();
