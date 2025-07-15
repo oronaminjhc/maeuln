@@ -2134,20 +2134,34 @@ const ChatListPage = () => {
     useEffect(() => {
         if (!currentUser) return;
         const q = query(collection(db, 'chats'), where('members', 'array-contains', currentUser.uid), orderBy('lastMessage.createdAt', 'desc'));
+        
         const unsub = onSnapshot(q, async (s) => {
             const cData = await Promise.all(s.docs.map(async d => {
                 const cd = d.data();
                 const oId = cd.members.find(id => id !== currentUser.uid);
                 if (!oId) return null;
+
                 const uDoc = await getDoc(doc(db, 'users', oId));
-                return { id: d.id, ...cd, otherUser: uDoc.exists() ? {uid: uDoc.id, ...uDoc.data()} : { displayName: '알 수 없음', uid: oId } };
+                if (!uDoc.exists()) {
+                    return { id: d.id, ...cd, otherUser: { displayName: '알 수 없음', uid: oId } };
+                }
+
+                const otherUserData = uDoc.data();
+                // ▼▼▼▼▼ [핵심 수정] 상대방의 photoURL이 http://로 시작하면 https://로 변경합니다. ▼▼▼▼▼
+                if (otherUserData.photoURL?.startsWith('http://')) {
+                    otherUserData.photoURL = otherUserData.photoURL.replace('http://', 'https://');
+                }
+                // ▲▲▲▲▲ 수정 완료 ▲▲▲▲▲
+
+                return { id: d.id, ...cd, otherUser: { uid: uDoc.id, ...otherUserData } };
             }));
             setChats(cData.filter(Boolean));
         }, (e) => {
             console.error("Chat list error:", e);
             setChats([]);
         });
-        return unsub;
+
+        return () => unsub();
     }, [currentUser]);
 
     if (chats === null) return <LoadingSpinner />;
