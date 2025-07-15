@@ -1625,57 +1625,57 @@ const NewsWritePage = () => {
     const location = useLocation();
     const { currentUser } = useAuth();
     const itemToEdit = location.state?.itemToEdit;
-    const initialCity = location.state?.city;
     
+    // 제목, 내용 등 기존 상태
     const [title, setTitle] = useState(itemToEdit?.title || '');
     const [content, setContent] = useState(itemToEdit?.content || '');
     const [tags, setTags] = useState(itemToEdit?.tags?.join(', ') || '');
     const [date, setDate] = useState(itemToEdit?.date || '');
+    const [linkUrl, setLinkUrl] = useState(itemToEdit?.linkUrl || '');
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(itemToEdit?.imageUrl || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [postRegion, setPostRegion] = useState('');
-    const [postCity, setPostCity] = useState('');
-    
-    // 지역 선택을 위한 상태 변수 추가
+
+    // 지역 선택을 위한 상태
     const [regions, setRegions] = useState([]);
     const [cities, setCities] = useState([]);
-    // linkUrl 상태 추가
-    const [linkUrl, setLinkUrl] = useState(itemToEdit?.linkUrl || '');
+    const [postRegion, setPostRegion] = useState(itemToEdit?.region || '');
+    const [postCity, setPostCity] = useState(itemToEdit?.city || '');
 
-    // 컴포넌트가 마운트될 때 시/도 목록을 불러옵니다.
+    // 1. 컴포넌트가 로드되면 전체 시/도 목록을 불러옵니다.
     useEffect(() => {
         fetchRegions().then(setRegions);
     }, []);
 
-    // 시/도를 선택하면 해당 시/군 목록을 불러옵니다.
-    useEffect(() => {
-        if (postRegion) {
-            const regionData = regions.find(r => r.name === postRegion);
-            if (regionData) fetchCities(regionData.code).then(setCities);
-        } else {
+    // 2. 시/도를 선택할 때마다 실행됩니다.
+    const handleRegionChange = async (e) => {
+        const regionName = e.target.value;
+        setPostRegion(regionName);
+        setPostCity(''); // 시/도를 바꾸면 시/군 선택은 초기화
+
+        if (!regionName) {
             setCities([]);
+            return;
         }
-    }, [postRegion, regions]);
 
-    useEffect(() => {
-        const city = itemToEdit?.city || initialCity;
-        if(city && city !== '전체') {
-            setPostCity(city);
-            getAllRegionCityMap().then(map => setPostRegion(map.cityToRegion[city] || ''));
-        }
-    }, [itemToEdit, initialCity]);
-
-    const handleImageChange = (e) => {
-        if (e.target.files[0]) {
-            const file = e.target.files[0];
-            setImageFile(file);
-            setImagePreview(URL.createObjectURL(file));
+        const regionData = regions.find(r => r.name === regionName);
+        if (regionData) {
+            const fetchedCities = await fetchCities(regionData.code, regionData.name);
+            setCities(fetchedCities);
         }
     };
+    
+    // 수정 모드일 때, 기존 지역 정보로 시/군 목록을 불러옵니다.
+    useEffect(() => {
+        if(itemToEdit && regions.length > 0) {
+            const regionData = regions.find(r => r.name === itemToEdit.region);
+            if(regionData) {
+                fetchCities(regionData.code, regionData.name).then(setCities);
+            }
+        }
+    }, [itemToEdit, regions]);
 
     const handleSubmit = async () => {
-        // 게시 지역 유효성 검사 추가
         if (!title.trim() || !content.trim() || !date || !postRegion || !postCity) {
             alert('게시할 지역, 날짜, 제목, 내용을 모두 입력해주세요.');
             return;
@@ -1702,13 +1702,11 @@ const NewsWritePage = () => {
                 imageUrl,
                 imagePath,
                 date,
+                linkUrl,
                 updatedAt: Timestamp.now(),
                 tags: tags.split(',').map(t=>t.trim()).filter(Boolean),
-                // currentUser의 지역 대신 선택된 지역 정보 사용
                 region: postRegion,
-                city: postCity,
-                // linkUrl 데이터 추가
-                linkUrl: linkUrl
+                city: postCity
             };
 
             if (itemToEdit) {
@@ -1734,13 +1732,12 @@ const NewsWritePage = () => {
                 </button>
             </div>
             <div className="p-4 space-y-4">
-                {/* 관리자 전용 지역 선택 UI 추가 */}
                 <div className="p-3 bg-gray-50 border rounded-lg space-y-2">
                     <p className="font-bold text-sm text-gray-700">게시 지역 선택</p>
                     <div className="flex gap-2">
                         <select 
                             value={postRegion} 
-                            onChange={(e) => setPostRegion(e.target.value)}
+                            onChange={handleRegionChange}
                             className="w-1/2 p-2 border border-gray-300 rounded-md"
                         >
                             <option value="">시/도 선택</option>
@@ -1749,7 +1746,7 @@ const NewsWritePage = () => {
                         <select 
                             value={postCity}
                             onChange={(e) => setPostCity(e.target.value)}
-                            disabled={!postRegion}
+                            disabled={cities.length === 0}
                             className="w-1/2 p-2 border border-gray-300 rounded-md"
                         >
                             <option value="">시/군 선택</option>
@@ -1757,25 +1754,16 @@ const NewsWritePage = () => {
                         </select>
                     </div>
                 </div>
-                
                 <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="text" value={tags} onChange={e=>setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
+                <input type="url" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} placeholder="관련 링크 URL (선택사항)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
-                
-                {/* URL 입력 필드 추가 */}
-                <input 
-                    type="url" 
-                    value={linkUrl} 
-                    onChange={e => setLinkUrl(e.target.value)} 
-                    placeholder="관련 링크 URL (예: https://...)" 
-                    className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" 
-                />
                 <div className="border-t pt-4">
                     <label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]">
                         <ImageUp size={20} /><span>사진 추가</span>
                     </label>
-                    <input id="image-upload-news" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    <input id="image-upload-news" type="file" accept="image/*" onChange={e => setImageFile(e.target.files[0])} className="hidden" />
                     {imagePreview && (
                         <div className="mt-4 relative w-32 h-32">
                             <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
