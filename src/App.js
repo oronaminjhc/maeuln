@@ -947,19 +947,29 @@ const BenefitsPage = () => {
     const [benefits, setBenefits] = useState(null);
 
     useEffect(() => {
-        if (activeTab === '관리자 문의') return;
-        setBenefits(null);
-        if (!currentUser?.city) return;
+        if (activeTab === '관리자 문의') {
+            setBenefits([]); // 관리자 문의 탭에서는 목록을 비웁니다.
+            return;
+        }
+        
+        setBenefits(null); // 로딩 상태를 위해 목록을 null로 초기화
 
-        const q = query(collection(db, "benefits"), where("category", "==", activeTab), where("city", "==", currentUser.city), orderBy("createdAt", "desc"));
+        // [핵심 수정] 도시 필터링(where("city", ...))을 제거하여 모든 지역의 혜택을 불러옵니다.
+        const q = query(
+            collection(db, "benefits"), 
+            where("category", "==", activeTab), 
+            orderBy("createdAt", "desc")
+        );
+
         const unsub = onSnapshot(q, (snapshot) => {
             setBenefits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }, (error) => {
             console.error("Error fetching benefits:", error);
             setBenefits([]);
         });
+
         return () => unsub();
-    }, [activeTab, currentUser?.city]);
+    }, [activeTab]); // 이제 currentUser.city가 아닌 activeTab이 변경될 때만 데이터를 다시 불러옵니다.
 
     const getIconForTab = (tab) => {
         switch(tab) {
