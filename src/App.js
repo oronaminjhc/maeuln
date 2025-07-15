@@ -2320,42 +2320,52 @@ const PageLayout = ({ children, hasHeader = true, hasFooter = true, isChat = fal
 const Header = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    // setAdminSelectedCity 함수를 useAuth()에서 가져옵니다.
     const { currentUser, adminSelectedCity, setAdminSelectedCity } = useAuth();
     
-    // 지역 선택을 위한 상태 추가
-    const [regions, setRegions] = useState([]);
-    const [cities, setCities] = useState([]);
-    const [selectedRegion, setSelectedRegion] = useState('');
+    // 지역 선택 UI를 위한 상태
+    const [regions, setRegions] = useState([]); // 시/도 목록
+    const [cities, setCities] = useState([]);   // 선택된 시/도에 따른 시/군 목록
+    const [selectedRegionName, setSelectedRegionName] = useState(''); // 선택된 시/도 이름
 
-    // 앱이 로드될 때 전체 시/도 목록을 불러옵니다.
+    // 1. 앱이 시작되면 전체 시/도 목록을 한번만 불러옵니다.
     useEffect(() => {
         fetchRegions().then(setRegions);
     }, []);
 
-    // 시/도를 선택하면 해당 시/군 목록을 불러옵니다.
-    useEffect(() => {
-        if (selectedRegion) {
-            const regionData = regions.find(r => r.name === selectedRegion);
-            if (regionData) {
-                fetchCities(regionData.code).then(setCities);
-            }
-        } else {
+    // 2. 시/도를 선택할 때마다 실행됩니다.
+    const handleRegionChange = async (e) => {
+        const regionName = e.target.value;
+        setSelectedRegionName(regionName);
+
+        // 선택을 초기화하면 시/군 목록도 비웁니다.
+        if (!regionName) {
             setCities([]);
+            setAdminSelectedCity(null);
+            return;
         }
-    }, [selectedRegion, regions]);
-    
-    // 시/군을 선택하면 전역 상태(adminSelectedCity)를 업데이트합니다.
-    const handleCityChange = (city) => {
-        if (city === '전체') {
-            setAdminSelectedCity(null); // '전체' 선택 시 null로 설정하여 전국 뷰로 전환
-        } else {
-            setAdminSelectedCity(city);
+
+        // 선택된 시/도 이름으로 해당 지역의 전체 정보(코드 포함)를 찾습니다.
+        const regionData = regions.find(r => r.name === regionName);
+        if (regionData) {
+            // 해당 지역의 시/군 목록을 불러옵니다.
+            const fetchedCities = await fetchCities(regionData.code, regionData.name);
+            setCities(fetchedCities);
+            // 시/도를 바꾸면 시/군 선택은 '전체'로, 전역 상태는 초기화합니다.
+            setAdminSelectedCity(null); 
         }
     };
 
-    if (!currentUser) return null;
+    // 3. 시/군을 선택할 때마다 실행됩니다.
+    const handleCityChange = (e) => {
+        const cityName = e.target.value;
+        if (cityName === '전체' || !cityName) {
+            setAdminSelectedCity(null);
+        } else {
+            setAdminSelectedCity(cityName);
+        }
+    };
 
+    // (페이지 제목을 가져오는 함수 등 나머지 부분은 동일합니다)
     const getPageTitle = () => {
         const { pathname } = location;
         if (pathname.startsWith('/profile/')) return '프로필';
@@ -2365,25 +2375,21 @@ const Header = () => {
         if (pathname.startsWith('/chat/')) return location.state?.recipientName || '채팅';
         
         const titles = {
-            '/home': '마을N',
-            '/news': '소식',
-            '/board': '게시판',
-            '/calendar': '달력',
-            '/benefits': '혜택',
-            '/search': '검색',
-            '/notifications': '알림',
-            '/chats': '채팅',
+            '/home': '마을N', '/news': '소식', '/board': '게시판',
+            '/calendar': '달력', '/benefits': '혜택', '/search': '검색',
+            '/notifications': '알림', '/chats': '채팅',
         };
         return titles[pathname] || '마을N';
     };
     
     const isHomePage = location.pathname === '/home';
+    if (!currentUser) return null;
 
     return (
         <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 w-full max-w-sm mx-auto">
             <div className="px-4 py-3 flex justify-between items-center border-b border-gray-200 h-16">
                 <div className="flex items-center gap-2 flex-1">
-                    {isHomePage ? <Logo size={28}/> : <button onClick={() => navigate(-1)} className="p-1 -ml-2"><ArrowLeft size={24} /></button>}
+                    {isHomePage ? <Logo className="w-7 h-7" /> : <button onClick={() => navigate(-1)} className="p-1 -ml-2"><ArrowLeft size={24} /></button>}
                     {!isHomePage && <h1 className="text-xl font-bold text-gray-800 truncate">{getPageTitle()}</h1>}
                 </div>
                 <div className="flex items-center gap-3">
@@ -2399,22 +2405,23 @@ const Header = () => {
                 </div>
             </div>
             
-            {/* 관리자 전용 지역 선택 UI 추가 */}
             {currentUser.isAdmin && (
                 <div className="p-2 bg-gray-100 border-b flex items-center gap-2 text-sm">
                     <span className="font-bold text-gray-600 pl-2">지역뷰:</span>
                     <select 
-                        value={selectedRegion} 
-                        onChange={(e) => setSelectedRegion(e.target.value)}
+                        value={selectedRegionName} 
+                        onChange={handleRegionChange}
                         className="p-1 border border-gray-300 rounded-md"
                     >
                         <option value="">시/도</option>
                         {regions.map(r => <option key={r.code} value={r.name}>{r.name}</option>)}
                     </select>
-                    <select 
-                        onChange={(e) => handleCityChange(e.target.value)} 
-                        disabled={!selectedRegion}
+                    <select
+                        onChange={handleCityChange} 
+                        disabled={cities.length === 0}
                         className="p-1 border border-gray-300 rounded-md flex-1"
+                        // 시/도 변경 시 값을 초기화하기 위해 key 속성 추가
+                        key={selectedRegionName} 
                     >
                         <option value="전체">전체</option>
                         {cities.map(c => <option key={c} value={c}>{c}</option>)}
