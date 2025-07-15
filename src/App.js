@@ -148,7 +148,21 @@ const NewsCard = ({ news, isAdmin, openDetailModal, handleDeleteNews, handleLike
             <h3 className="font-bold text-lg truncate mb-1">{news.title}</h3>
             <p className="text-gray-600 text-sm h-10 overflow-hidden text-ellipsis mb-3">{news.content}</p>
             <div className="flex justify-between items-center text-xs text-gray-500">
-                <button onClick={() => openDetailModal(news)} className="font-semibold text-blue-600 hover:underline">자세히 보기</button>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => openDetailModal(news)} className="font-semibold text-blue-600 hover:underline">자세히 보기</button>
+                    {/* '신청하기' 버튼 조건부 렌더링 */}
+                    {news.linkUrl && (
+                        <a 
+                            href={news.linkUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()} // 카드 전체가 클릭되는 것을 방지
+                            className="font-semibold text-green-600 hover:underline"
+                        >
+                            신청하기
+                        </a>
+                    )}
+                </div>
                 <div className="flex items-center gap-2">
                     {isAdmin && <button onClick={() => handleDeleteNews(news.id, news.imagePath)} className="text-red-500"><Trash2 size={16} /></button>}
                     <button onClick={() => handleLikeNews(news)} className={`flex items-center gap-1 ${isLiked ? 'text-red-500' : 'text-gray-400'}`}>
@@ -1684,6 +1698,27 @@ const NewsWritePage = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [postRegion, setPostRegion] = useState('');
     const [postCity, setPostCity] = useState('');
+    
+    // 지역 선택을 위한 상태 변수 추가
+    const [regions, setRegions] = useState([]);
+    const [cities, setCities] = useState([]);
+    // linkUrl 상태 추가
+    const [linkUrl, setLinkUrl] = useState(itemToEdit?.linkUrl || '');
+
+    // 컴포넌트가 마운트될 때 시/도 목록을 불러옵니다.
+    useEffect(() => {
+        fetchRegions().then(setRegions);
+    }, []);
+
+    // 시/도를 선택하면 해당 시/군 목록을 불러옵니다.
+    useEffect(() => {
+        if (postRegion) {
+            const regionData = regions.find(r => r.name === postRegion);
+            if (regionData) fetchCities(regionData.code).then(setCities);
+        } else {
+            setCities([]);
+        }
+    }, [postRegion, regions]);
 
     useEffect(() => {
         const city = itemToEdit?.city || initialCity;
@@ -1702,12 +1737,9 @@ const NewsWritePage = () => {
     };
 
     const handleSubmit = async () => {
-        if (!title.trim() || !content.trim() || !date) {
-            alert('날짜, 제목, 내용을 모두 입력해주세요.');
-            return;
-        }
-        if (currentUser.isAdmin && (!postRegion || !postCity)) {
-            alert('게시할 지역 정보가 없습니다. 소식 페이지에서 글쓰기를 시작해주세요.');
+        // 게시 지역 유효성 검사 추가
+        if (!title.trim() || !content.trim() || !date || !postRegion || !postCity) {
+            alert('게시할 지역, 날짜, 제목, 내용을 모두 입력해주세요.');
             return;
         }
         if (isSubmitting) return;
@@ -1734,8 +1766,11 @@ const NewsWritePage = () => {
                 date,
                 updatedAt: Timestamp.now(),
                 tags: tags.split(',').map(t=>t.trim()).filter(Boolean),
+                // currentUser의 지역 대신 선택된 지역 정보 사용
                 region: postRegion,
-                city: postCity
+                city: postCity,
+                // linkUrl 데이터 추가
+                linkUrl: linkUrl
             };
 
             if (itemToEdit) {
@@ -1761,15 +1796,43 @@ const NewsWritePage = () => {
                 </button>
             </div>
             <div className="p-4 space-y-4">
-                {currentUser.isAdmin && (postRegion || postCity) && (
-                    <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded-r-lg">
-                        <p className="text-sm font-semibold text-gray-700">작성 지역: <span className="text-green-800">{postRegion} {postCity}</span></p>
+                {/* 관리자 전용 지역 선택 UI 추가 */}
+                <div className="p-3 bg-gray-50 border rounded-lg space-y-2">
+                    <p className="font-bold text-sm text-gray-700">게시 지역 선택</p>
+                    <div className="flex gap-2">
+                        <select 
+                            value={postRegion} 
+                            onChange={(e) => setPostRegion(e.target.value)}
+                            className="w-1/2 p-2 border border-gray-300 rounded-md"
+                        >
+                            <option value="">시/도 선택</option>
+                            {regions.map(r => <option key={r.code} value={r.name}>{r.name}</option>)}
+                        </select>
+                        <select 
+                            value={postCity}
+                            onChange={(e) => setPostCity(e.target.value)}
+                            disabled={!postRegion}
+                            className="w-1/2 p-2 border border-gray-300 rounded-md"
+                        >
+                            <option value="">시/군 선택</option>
+                            {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
                     </div>
-                )}
+                </div>
+                
                 <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="text" value={tags} onChange={e=>setTags(e.target.value)} placeholder="태그 (쉼표로 구분)" className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" className="w-full text-xl p-2 border-b-2 focus:outline-none focus:border-[#00462A]" />
                 <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="내용을 입력하세요..." className="w-full h-64 p-2 focus:outline-none resize-none" />
+                
+                {/* URL 입력 필드 추가 */}
+                <input 
+                    type="url" 
+                    value={linkUrl} 
+                    onChange={e => setLinkUrl(e.target.value)} 
+                    placeholder="관련 링크 URL (예: https://...)" 
+                    className="w-full p-2 border-b-2 focus:outline-none focus:border-[#00462A]" 
+                />
                 <div className="border-t pt-4">
                     <label htmlFor="image-upload-news" className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-[#00462A]">
                         <ImageUp size={20} /><span>사진 추가</span>
@@ -2257,7 +2320,39 @@ const PageLayout = ({ children, hasHeader = true, hasFooter = true, isChat = fal
 const Header = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { currentUser } = useAuth();
+    // setAdminSelectedCity 함수를 useAuth()에서 가져옵니다.
+    const { currentUser, adminSelectedCity, setAdminSelectedCity } = useAuth();
+    
+    // 지역 선택을 위한 상태 추가
+    const [regions, setRegions] = useState([]);
+    const [cities, setCities] = useState([]);
+    const [selectedRegion, setSelectedRegion] = useState('');
+
+    // 앱이 로드될 때 전체 시/도 목록을 불러옵니다.
+    useEffect(() => {
+        fetchRegions().then(setRegions);
+    }, []);
+
+    // 시/도를 선택하면 해당 시/군 목록을 불러옵니다.
+    useEffect(() => {
+        if (selectedRegion) {
+            const regionData = regions.find(r => r.name === selectedRegion);
+            if (regionData) {
+                fetchCities(regionData.code).then(setCities);
+            }
+        } else {
+            setCities([]);
+        }
+    }, [selectedRegion, regions]);
+    
+    // 시/군을 선택하면 전역 상태(adminSelectedCity)를 업데이트합니다.
+    const handleCityChange = (city) => {
+        if (city === '전체') {
+            setAdminSelectedCity(null); // '전체' 선택 시 null로 설정하여 전국 뷰로 전환
+        } else {
+            setAdminSelectedCity(city);
+        }
+    };
 
     if (!currentUser) return null;
 
@@ -2285,22 +2380,47 @@ const Header = () => {
     const isHomePage = location.pathname === '/home';
 
     return (
-        <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 px-4 py-3 flex justify-between items-center border-b border-gray-200 h-16 w-full max-w-sm mx-auto">
-            <div className="flex items-center gap-2 flex-1">
-                {isHomePage ? <Logo size={28}/> : <button onClick={() => navigate(-1)} className="p-1 -ml-2"><ArrowLeft size={24} /></button>}
-                {!isHomePage && <h1 className="text-xl font-bold text-gray-800 truncate">{getPageTitle()}</h1>}
+        <header className="sticky top-0 bg-white/80 backdrop-blur-sm z-30 w-full max-w-sm mx-auto">
+            <div className="px-4 py-3 flex justify-between items-center border-b border-gray-200 h-16">
+                <div className="flex items-center gap-2 flex-1">
+                    {isHomePage ? <Logo size={28}/> : <button onClick={() => navigate(-1)} className="p-1 -ml-2"><ArrowLeft size={24} /></button>}
+                    {!isHomePage && <h1 className="text-xl font-bold text-gray-800 truncate">{getPageTitle()}</h1>}
+                </div>
+                <div className="flex items-center gap-3">
+                    <Link to="/search" className="p-1"><Search size={24} className="text-gray-600" /></Link>
+                    <Link to="/chats" className="p-1"><MessageSquare size={24} className="text-gray-600" /></Link>
+                    <Link to="/notifications" className="p-1"><Bell size={24} className="text-gray-600" /></Link>
+                    <Link to={`/profile/${currentUser.uid}`}>
+                        {currentUser.photoURL ? 
+                            <img src={currentUser.photoURL} alt="profile" className="w-8 h-8 rounded-full bg-gray-200 object-cover"/> : 
+                            <UserCircle size={32} className="text-gray-400"/>
+                        }
+                    </Link>
+                </div>
             </div>
-            <div className="flex items-center gap-3">
-                <Link to="/search" className="p-1"><Search size={24} className="text-gray-600" /></Link>
-                <Link to="/chats" className="p-1"><MessageSquare size={24} className="text-gray-600" /></Link>
-                <Link to="/notifications" className="p-1"><Bell size={24} className="text-gray-600" /></Link>
-                <Link to={`/profile/${currentUser.uid}`}>
-                    {currentUser.photoURL ? 
-                        <img src={currentUser.photoURL} alt="profile" className="w-8 h-8 rounded-full bg-gray-200 object-cover"/> : 
-                        <UserCircle size={32} className="text-gray-400"/>
-                    }
-                </Link>
-            </div>
+            
+            {/* 관리자 전용 지역 선택 UI 추가 */}
+            {currentUser.isAdmin && (
+                <div className="p-2 bg-gray-100 border-b flex items-center gap-2 text-sm">
+                    <span className="font-bold text-gray-600 pl-2">지역뷰:</span>
+                    <select 
+                        value={selectedRegion} 
+                        onChange={(e) => setSelectedRegion(e.target.value)}
+                        className="p-1 border border-gray-300 rounded-md"
+                    >
+                        <option value="">시/도</option>
+                        {regions.map(r => <option key={r.code} value={r.name}>{r.name}</option>)}
+                    </select>
+                    <select 
+                        onChange={(e) => handleCityChange(e.target.value)} 
+                        disabled={!selectedRegion}
+                        className="p-1 border border-gray-300 rounded-md flex-1"
+                    >
+                        <option value="전체">전체</option>
+                        {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                </div>
+            )}
         </header>
     );
 };
